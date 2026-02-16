@@ -1,15 +1,15 @@
 import GlassNavbar from "../components/GlassNavbar";
-import HeroLanding from "../components/HeroLanding";
+import UIScorePage from "../components/UIScorePage";
 import LivingBackground from "../components/LivingBackground";
 
-const Index = () => {
+const UIScore = () => {
   return (
     <div className="relative min-h-screen">
       <LivingBackground />
       <GlassNavbar />
-      <HeroLanding />
+      <UIScorePage />
     </div>
   );
 };
 
-export default Index;
+export default UIScore;

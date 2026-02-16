@@ -1,15 +1,15 @@
 import GlassNavbar from "../components/GlassNavbar";
-import HeroLanding from "../components/HeroLanding";
+import MemoryGraphPage from "../components/MemoryGraphPage";
 import LivingBackground from "../components/LivingBackground";
 
-const Index = () => {
+const MemoryGraph = () => {
   return (
     <div className="relative min-h-screen">
       <LivingBackground />
       <GlassNavbar />
-      <HeroLanding />
+      <MemoryGraphPage />
     </div>
   );
 };
 
-export default Index;
+export default MemoryGraph;

@@ -1,15 +1,15 @@
 import GlassNavbar from "../components/GlassNavbar";
-import HeroLanding from "../components/HeroLanding";
+import WorkspaceCanvas from "../components/WorkspaceCanvas";
 import LivingBackground from "../components/LivingBackground";
 
-const Index = () => {
+const Workspace = () => {
   return (
     <div className="relative min-h-screen">
       <LivingBackground />
       <GlassNavbar />
-      <HeroLanding />
+      <WorkspaceCanvas />
     </div>
   );
 };
 
-export default Index;
+export default Workspace;
