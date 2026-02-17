@@ -1,9 +1,27 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { Layers, Palette, Move, Type } from "lucide-react";
+import { Layers, Palette, Move, Type, Info, Lightbulb, HelpCircle } from "lucide-react";
 
 interface Props {
   selectedComponent: { id: number; type: string; label: string } | null;
 }
+
+const componentInfo: Record<string, { what: string; why: string; details: string }> = {
+  card: {
+    what: "A Glass Card is a container that groups related content together using a frosted-glass visual style.",
+    why: "Cards help users scan content quickly by creating clear visual boundaries. The glassmorphism effect adds depth and modern aesthetics while maintaining readability.",
+    details: "This component uses backdrop-blur for the frosted effect, semi-transparent backgrounds, rounded corners, and skeleton placeholders that indicate where real content will load. Cards are ideal for dashboards, feature highlights, and content previews.",
+  },
+  button: {
+    what: "A CTA (Call-to-Action) Button is an interactive element that prompts the user to take a specific action.",
+    why: "CTA buttons guide users toward key actions like signing up, purchasing, or navigating. The gradient and glow make it visually dominant so users notice it immediately.",
+    details: "This button uses a purple-to-pink gradient with a subtle neon glow effect. It has generous padding for easy click/tap targets, bold font weight for readability, and smooth hover/press animations for satisfying feedback.",
+  },
+  input: {
+    what: "A Text Input field allows users to type and submit information like emails, names, or search queries.",
+    why: "Input fields are essential for collecting user data. The subtle border and muted placeholder text guide users on what to enter without overwhelming the design.",
+    details: "This input features a semi-transparent background that blends with the dark theme, a thin border for definition, and comfortable padding. The placeholder text hints at expected content. It's designed for accessibility with proper contrast ratios.",
+  },
+};
 
 const properties = {
   card: [
@@ -27,6 +45,8 @@ const properties = {
 };
 
 const ComponentExplainer = ({ selectedComponent }: Props) => {
+  const info = selectedComponent ? componentInfo[selectedComponent.type] : null;
+
   return (
     <div className="p-5">
       <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">
@@ -47,7 +67,36 @@ const ComponentExplainer = ({ selectedComponent }: Props) => {
               <p className="text-xs text-muted-foreground mt-1 capitalize">{selectedComponent.type} component</p>
             </div>
 
-            <div className="space-y-3">
+            {/* What is it? */}
+            {info && (
+              <div className="space-y-3 mb-5">
+                <div className="p-3 rounded-lg bg-secondary/50">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <HelpCircle className="w-3.5 h-3.5 text-primary" />
+                    <p className="text-xs font-semibold text-primary">What is it?</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{info.what}</p>
+                </div>
+                <div className="p-3 rounded-lg bg-secondary/50">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Lightbulb className="w-3.5 h-3.5 text-accent" />
+                    <p className="text-xs font-semibold text-accent">Why use it?</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{info.why}</p>
+                </div>
+                <div className="p-3 rounded-lg bg-secondary/50">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Info className="w-3.5 h-3.5 text-neon-blue" />
+                    <p className="text-xs font-semibold text-neon-blue">More details</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{info.details}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Properties */}
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Properties</p>
+            <div className="space-y-2">
               {(properties[selectedComponent.type as keyof typeof properties] || []).map((prop, i) => (
                 <motion.div
                   key={prop.label}
@@ -65,14 +114,13 @@ const ComponentExplainer = ({ selectedComponent }: Props) => {
               ))}
             </div>
 
-            {/* Live generation indicator */}
-            <div className="mt-6 p-3 rounded-lg border border-primary/20 bg-primary/5">
+            <div className="mt-5 p-3 rounded-lg border border-primary/20 bg-primary/5">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
                 <p className="text-xs font-medium text-primary">Live Generation</p>
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                This component uses glassmorphism with backdrop-blur, rounded corners, and skeleton content placeholders for loading states.
+                Click any component on the canvas to see a full breakdown of what it is, why it's used, and how it's styled.
               </p>
             </div>
           </motion.div>

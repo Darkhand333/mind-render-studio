@@ -30,7 +30,7 @@ const WorkspaceCanvas = () => {
         initial={{ x: -60, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        className="fixed left-0 top-16 bottom-0 w-14 glass-strong flex flex-col items-center py-4 gap-2 z-40"
+        className="fixed left-0 top-16 bottom-0 w-14 glass-strong flex flex-col items-center pt-12 pb-4 gap-2 z-30"
       >
         {toolbarItems.map((item) => (
           <button
