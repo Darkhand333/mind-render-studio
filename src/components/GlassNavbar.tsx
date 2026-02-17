@@ -1,11 +1,12 @@
 import { Link, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Mic, Search, Sparkles } from "lucide-react";
+import { Mic, Search, Sparkles, Settings } from "lucide-react";
 
 const navLinks = [
-  { label: "Workspace", path: "/workspace" },
+  { label: "Home", path: "/" },
   { label: "UI Score", path: "/ui-score" },
   { label: "Memory Graph", path: "/memory-graph" },
+  { label: "Workspace", path: "/workspace" },
 ];
 
 const GlassNavbar = () => {
@@ -19,7 +20,6 @@ const GlassNavbar = () => {
       className="fixed top-0 left-0 right-0 z-50 glass-strong"
     >
       <div className="flex items-center justify-between px-6 h-14">
-        {/* Logo */}
         <Link to="/" className="flex items-center gap-2 group">
           <div className="w-8 h-8 rounded-lg gradient-purple flex items-center justify-center neon-glow-sm">
             <Sparkles className="w-4 h-4 text-primary-foreground" />
@@ -29,7 +29,6 @@ const GlassNavbar = () => {
           </span>
         </Link>
 
-        {/* Nav Links */}
         <nav className="hidden md:flex items-center gap-1">
           {navLinks.map((link) => {
             const isActive = location.pathname === link.path;
@@ -38,9 +37,7 @@ const GlassNavbar = () => {
                 key={link.path}
                 to={link.path}
                 className={`relative px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-300 ${
-                  isActive
-                    ? "text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
+                  isActive ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {isActive && (
@@ -56,7 +53,6 @@ const GlassNavbar = () => {
           })}
         </nav>
 
-        {/* Right Actions */}
         <div className="flex items-center gap-3">
           <button className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
             <Search className="w-4 h-4" />
@@ -64,10 +60,12 @@ const GlassNavbar = () => {
           <button className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
             <Mic className="w-4 h-4" />
           </button>
+          <Link to="/settings" className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+            <Settings className="w-4 h-4" />
+          </Link>
           <div className="w-8 h-8 rounded-full gradient-purple neon-glow-sm" />
         </div>
       </div>
-      {/* Purple accent underline */}
       <div className="h-px w-full bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
     </motion.header>
   );

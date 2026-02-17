@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Star, TrendingUp, Eye, Palette, Layout, Type, AlertTriangle, CheckCircle, Sparkles } from "lucide-react";
+import { Star, TrendingUp, Eye, Palette, Layout, Type, AlertTriangle, CheckCircle, Sparkles, Upload, Link2, Image } from "lucide-react";
 
 const mockProjects = [
   {
@@ -35,7 +35,24 @@ const categories = [
 
 const UIScorePage = () => {
   const [selected, setSelected] = useState(0);
+  const [uploadUrl, setUploadUrl] = useState("");
+  const [uploadPrompt, setUploadPrompt] = useState("");
+  const [showUpload, setShowUpload] = useState(false);
   const project = mockProjects[selected];
+
+  const handleUploadImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // In a real app, this would upload and evaluate the image
+      console.log("Evaluating uploaded image:", file.name);
+    }
+  };
+
+  const handleEvaluateUrl = () => {
+    if (!uploadUrl.trim()) return;
+    console.log("Evaluating URL:", uploadUrl, "with prompt:", uploadPrompt);
+    // In a real app, this would fetch and evaluate the URL
+  };
 
   return (
     <div className="min-h-screen pt-20 px-6 pb-12">
@@ -45,11 +62,78 @@ const UIScorePage = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
         >
-          <h1 className="text-3xl font-bold mb-2">
-            UI Score <span className="gradient-text">Evaluation</span>
-          </h1>
-          <p className="text-muted-foreground mb-8">AI-powered analysis of your prototypes' design quality</p>
+          <div className="flex items-center justify-between mb-2">
+            <h1 className="text-3xl font-bold">
+              UI Score <span className="gradient-text">Evaluation</span>
+            </h1>
+            <button
+              onClick={() => setShowUpload(!showUpload)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl gradient-purple text-primary-foreground text-sm font-semibold hover:scale-[1.02] transition-transform neon-glow-sm"
+            >
+              <Upload className="w-4 h-4" />
+              Evaluate External UI
+            </button>
+          </div>
+          <p className="text-muted-foreground mb-6">AI-powered analysis of your prototypes' design quality</p>
         </motion.div>
+
+        {/* Upload Section */}
+        {showUpload && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="glass rounded-2xl p-6 mb-6"
+          >
+            <h3 className="text-sm font-semibold text-foreground mb-4">Upload a link or image to evaluate</h3>
+
+            <div className="grid sm:grid-cols-2 gap-4 mb-4">
+              {/* URL Input */}
+              <div className="space-y-2">
+                <label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  <Link2 className="w-3.5 h-3.5" /> Paste a website URL
+                </label>
+                <input
+                  value={uploadUrl}
+                  onChange={(e) => setUploadUrl(e.target.value)}
+                  placeholder="https://example.com"
+                  className="w-full bg-secondary/50 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/50 transition-shadow"
+                />
+              </div>
+
+              {/* Image Upload */}
+              <div className="space-y-2">
+                <label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  <Image className="w-3.5 h-3.5" /> Or upload a screenshot
+                </label>
+                <label className="flex items-center justify-center gap-2 w-full h-[42px] bg-secondary/50 rounded-xl border border-dashed border-border/50 cursor-pointer hover:border-primary/30 transition-colors">
+                  <Upload className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Choose file</span>
+                  <input type="file" accept="image/*" onChange={handleUploadImage} className="hidden" />
+                </label>
+              </div>
+            </div>
+
+            {/* Prompt */}
+            <div className="space-y-2 mb-4">
+              <label className="text-xs text-muted-foreground">Evaluation prompt (optional)</label>
+              <input
+                value={uploadPrompt}
+                onChange={(e) => setUploadPrompt(e.target.value)}
+                placeholder="e.g. Focus on mobile usability and color accessibility..."
+                className="w-full bg-secondary/50 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/50 transition-shadow"
+              />
+            </div>
+
+            <button
+              onClick={handleEvaluateUrl}
+              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl gradient-purple text-primary-foreground text-sm font-semibold hover:scale-[1.02] transition-transform"
+            >
+              <Sparkles className="w-4 h-4" />
+              Evaluate Now
+            </button>
+          </motion.div>
+        )}
 
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Project list */}
@@ -63,9 +147,7 @@ const UIScorePage = () => {
                 transition={{ delay: i * 0.1, duration: 0.4 }}
                 whileHover={{ scale: 1.02 }}
                 className={`w-full text-left p-4 rounded-xl transition-all duration-300 ${
-                  selected === i
-                    ? "glass neon-glow-sm border-primary/30"
-                    : "glass hover:border-primary/20"
+                  selected === i ? "glass neon-glow-sm border-primary/30" : "glass hover:border-primary/20"
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
@@ -100,7 +182,6 @@ const UIScorePage = () => {
               transition={{ duration: 0.4 }}
               className="glass rounded-2xl p-6"
             >
-              {/* Score ring */}
               <div className="flex items-center gap-6 mb-8">
                 <div className="relative w-24 h-24">
                   <svg className="w-24 h-24 -rotate-90" viewBox="0 0 100 100">
@@ -140,7 +221,6 @@ const UIScorePage = () => {
                 </div>
               </div>
 
-              {/* Breakdown */}
               <div className="grid grid-cols-2 gap-4 mb-6">
                 {categories.map((cat, i) => {
                   const val = project.breakdown[cat.key as keyof typeof project.breakdown];
@@ -170,7 +250,6 @@ const UIScorePage = () => {
                 })}
               </div>
 
-              {/* AI Feedback */}
               <div className="p-4 rounded-xl border border-primary/20 bg-primary/5">
                 <div className="flex items-center gap-2 mb-2">
                   <Sparkles className="w-4 h-4 text-primary" />

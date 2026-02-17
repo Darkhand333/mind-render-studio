@@ -1,19 +1,20 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { Brain, ArrowRight, Zap, Clock, Layers } from "lucide-react";
+import { Brain, ArrowRight, Zap, Clock, Layers, HelpCircle, X } from "lucide-react";
 
-const nodes = [
-  { id: 1, label: "Login Screen", x: 80, y: 80, type: "page" },
-  { id: 2, label: "Hero Section", x: 300, y: 60, type: "component" },
-  { id: 3, label: "Purple CTA", x: 520, y: 100, type: "style" },
-  { id: 4, label: "Dashboard", x: 200, y: 220, type: "page" },
-  { id: 5, label: "Card Layout", x: 440, y: 240, type: "component" },
-  { id: 6, label: "Glassmorphism", x: 120, y: 340, type: "style" },
-  { id: 7, label: "Pricing Page", x: 380, y: 380, type: "page" },
-  { id: 8, label: "Nav Bar", x: 560, y: 340, type: "component" },
+const projectNodes = [
+  { id: 1, label: "Home Page", x: 80, y: 80, type: "page" },
+  { id: 2, label: "Workspace", x: 320, y: 60, type: "page" },
+  { id: 3, label: "UI Score", x: 540, y: 100, type: "page" },
+  { id: 4, label: "Memory Graph", x: 200, y: 200, type: "page" },
+  { id: 5, label: "Settings", x: 440, y: 220, type: "page" },
+  { id: 6, label: "Glass Navbar", x: 100, y: 320, type: "component" },
+  { id: 7, label: "Chatbot", x: 340, y: 350, type: "component" },
+  { id: 8, label: "Living BG", x: 540, y: 320, type: "style" },
 ];
 
-const edges = [
-  [1, 2], [2, 3], [1, 4], [4, 5], [4, 6], [5, 7], [3, 8], [7, 8],
+const projectEdges = [
+  [1, 2], [1, 3], [1, 4], [2, 5], [1, 6], [2, 7], [6, 2], [6, 3], [6, 4], [8, 1],
 ];
 
 const typeColors: Record<string, string> = {
@@ -23,13 +24,15 @@ const typeColors: Record<string, string> = {
 };
 
 const recentIntents = [
-  { time: "2m ago", action: "Created login screen with glassmorphism", icon: Layers },
-  { time: "5m ago", action: "Applied purple gradient to CTA button", icon: Zap },
-  { time: "8m ago", action: "Linked dashboard to pricing page", icon: ArrowRight },
-  { time: "12m ago", action: "Added card layout to dashboard", icon: Layers },
+  { time: "Just now", action: "Auto-mapped ProtoCraft project structure", icon: Brain },
+  { time: "2m ago", action: "Created Settings page with themes", icon: Layers },
+  { time: "5m ago", action: "Added back button to all pages", icon: Zap },
+  { time: "8m ago", action: "Improved component inspector explanations", icon: ArrowRight },
 ];
 
 const MemoryGraphPage = () => {
+  const [showGuide, setShowGuide] = useState(true);
+
   return (
     <div className="min-h-screen pt-20 px-6 pb-12">
       <div className="max-w-6xl mx-auto">
@@ -44,14 +47,51 @@ const MemoryGraphPage = () => {
               Intent <span className="gradient-text">Memory Graph</span>
             </h1>
           </div>
-          <p className="text-muted-foreground mb-8">
+          <p className="text-muted-foreground mb-6">
             AI tracks your design decisions to save time and learn your patterns
           </p>
         </motion.div>
 
+        {/* New User Guide */}
+        {showGuide && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="glass rounded-2xl p-5 mb-6 border-primary/20"
+          >
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <HelpCircle className="w-5 h-5 text-primary" />
+                <h3 className="text-sm font-semibold text-foreground">What is the Memory Graph?</h3>
+              </div>
+              <button onClick={() => setShowGuide(false)} className="p-1 rounded-lg hover:bg-secondary/50 text-muted-foreground">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="grid sm:grid-cols-3 gap-4 text-xs text-muted-foreground leading-relaxed">
+              <div className="p-3 rounded-lg bg-secondary/50">
+                <p className="font-semibold text-primary mb-1">🧠 What it does</p>
+                <p>The Memory Graph visualizes every page, component, and style in your project as an interactive node map. It shows how things connect.</p>
+              </div>
+              <div className="p-3 rounded-lg bg-secondary/50">
+                <p className="font-semibold text-accent mb-1">⚡ Why it matters</p>
+                <p>Instead of remembering which components go where, the AI tracks your decisions automatically. It learns your patterns to speed up future work.</p>
+              </div>
+              <div className="p-3 rounded-lg bg-secondary/50">
+                <p className="font-semibold text-neon-blue mb-1">🔗 How to read it</p>
+                <p><strong className="text-primary">Purple nodes</strong> = Pages, <strong className="text-neon-blue">Blue</strong> = Components, <strong className="text-neon-pink">Pink</strong> = Styles. Lines show connections between them.</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Graph visualization */}
           <div className="lg:col-span-2">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Current Project Structure</p>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">Auto-generated</span>
+            </div>
             <motion.div
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -59,11 +99,10 @@ const MemoryGraphPage = () => {
               className="glass rounded-2xl p-6 relative overflow-hidden"
               style={{ height: 480 }}
             >
-              {/* SVG edges */}
               <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ padding: 24 }}>
-                {edges.map(([from, to], i) => {
-                  const a = nodes.find((n) => n.id === from)!;
-                  const b = nodes.find((n) => n.id === to)!;
+                {projectEdges.map(([from, to], i) => {
+                  const a = projectNodes.find((n) => n.id === from)!;
+                  const b = projectNodes.find((n) => n.id === to)!;
                   return (
                     <motion.line
                       key={i}
@@ -79,8 +118,7 @@ const MemoryGraphPage = () => {
                 })}
               </svg>
 
-              {/* Nodes */}
-              {nodes.map((node, i) => (
+              {projectNodes.map((node, i) => (
                 <motion.div
                   key={node.id}
                   initial={{ opacity: 0, scale: 0.5 }}
@@ -96,7 +134,7 @@ const MemoryGraphPage = () => {
             </motion.div>
           </div>
 
-          {/* Recent intents */}
+          {/* Right sidebar */}
           <div>
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
               <Clock className="w-4 h-4" />
@@ -129,13 +167,14 @@ const MemoryGraphPage = () => {
               <p className="text-xs font-semibold text-muted-foreground mb-3">Node Types</p>
               <div className="space-y-2">
                 {[
-                  { label: "Page", color: "bg-primary" },
-                  { label: "Component", color: "bg-neon-blue" },
-                  { label: "Style", color: "bg-neon-pink" },
+                  { label: "Page", color: "bg-primary", desc: "App screens & routes" },
+                  { label: "Component", color: "bg-neon-blue", desc: "Reusable UI elements" },
+                  { label: "Style", color: "bg-neon-pink", desc: "Visual patterns & themes" },
                 ].map((item) => (
                   <div key={item.label} className="flex items-center gap-2">
                     <div className={`w-3 h-3 rounded-full ${item.color}/40`} />
-                    <span className="text-xs text-muted-foreground">{item.label}</span>
+                    <span className="text-xs text-foreground font-medium">{item.label}</span>
+                    <span className="text-[10px] text-muted-foreground">— {item.desc}</span>
                   </div>
                 ))}
               </div>

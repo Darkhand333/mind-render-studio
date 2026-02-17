@@ -1,17 +1,17 @@
 import GlassNavbar from "../components/GlassNavbar";
-import WorkspaceCanvas from "../components/WorkspaceCanvas";
+import SettingsPage from "../components/SettingsPage";
 import LivingBackground from "../components/LivingBackground";
 import BackButton from "../components/BackButton";
 
-const Workspace = () => {
+const Settings = () => {
   return (
     <div className="relative min-h-screen">
       <LivingBackground />
       <GlassNavbar />
       <BackButton />
-      <WorkspaceCanvas />
+      <SettingsPage />
     </div>
   );
 };
 
-export default Workspace;
+export default Settings;

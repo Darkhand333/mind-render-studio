@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Mic, ArrowRight, Layers, Palette, Zap, Brain } from "lucide-react";
+import { Mic, ArrowRight, Layers, Palette, Zap, Brain, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const features = [
@@ -20,7 +20,6 @@ const stagger = {
 const HeroLanding = () => {
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center px-6 pt-20">
-      {/* Hero glow */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[400px] rounded-full bg-primary/10 blur-[120px] pointer-events-none" />
 
       <motion.div
@@ -48,7 +47,7 @@ const HeroLanding = () => {
           variants={stagger.item}
           className="text-lg md:text-xl text-muted-foreground max-w-xl mx-auto mb-10 leading-relaxed"
         >
-          ProtoCraft turns your voice into living design — build stunning multi-page 
+          ProtoCraft turns your voice into living design — build stunning multi-page
           prototypes with AI, in seconds.
         </motion.p>
 
@@ -57,7 +56,8 @@ const HeroLanding = () => {
             to="/workspace"
             className="group inline-flex items-center gap-2 px-8 py-3.5 rounded-xl gradient-purple text-primary-foreground font-semibold neon-glow hover:scale-[1.02] transition-transform duration-300"
           >
-            Start Creating
+            <Sparkles className="w-4 h-4" />
+            Generate UI
             <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </Link>
           <Link
@@ -69,12 +69,31 @@ const HeroLanding = () => {
         </motion.div>
       </motion.div>
 
+      {/* Quick intro section */}
+      <motion.div
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.6, duration: 0.7 }}
+        className="relative z-10 mt-16 max-w-2xl text-center"
+      >
+        <div className="glass rounded-2xl p-6">
+          <h2 className="text-lg font-bold text-foreground mb-2">How it works</h2>
+          <div className="flex flex-col sm:flex-row items-center gap-4 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2"><span className="w-7 h-7 rounded-full gradient-purple text-primary-foreground flex items-center justify-center text-xs font-bold">1</span> Describe your UI by voice or text</div>
+            <ArrowRight className="w-4 h-4 text-primary hidden sm:block" />
+            <div className="flex items-center gap-2"><span className="w-7 h-7 rounded-full gradient-purple text-primary-foreground flex items-center justify-center text-xs font-bold">2</span> AI generates live prototype</div>
+            <ArrowRight className="w-4 h-4 text-primary hidden sm:block" />
+            <div className="flex items-center gap-2"><span className="w-7 h-7 rounded-full gradient-purple text-primary-foreground flex items-center justify-center text-xs font-bold">3</span> Refine, score & export</div>
+          </div>
+        </div>
+      </motion.div>
+
       {/* Features grid */}
       <motion.div
         initial="hidden"
         animate="show"
         variants={stagger.container}
-        className="relative z-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-24 max-w-5xl w-full"
+        className="relative z-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-10 max-w-5xl w-full"
       >
         {features.map((f) => (
           <motion.div
