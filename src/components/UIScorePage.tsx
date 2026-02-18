@@ -37,103 +37,93 @@ const UIScorePage = () => {
   const [selected, setSelected] = useState(0);
   const [uploadUrl, setUploadUrl] = useState("");
   const [uploadPrompt, setUploadPrompt] = useState("");
-  const [showUpload, setShowUpload] = useState(false);
+  const [uploadedFileName, setUploadedFileName] = useState("");
   const project = mockProjects[selected];
 
   const handleUploadImage = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // In a real app, this would upload and evaluate the image
-      console.log("Evaluating uploaded image:", file.name);
+      setUploadedFileName(file.name);
     }
   };
 
   const handleEvaluateUrl = () => {
-    if (!uploadUrl.trim()) return;
-    console.log("Evaluating URL:", uploadUrl, "with prompt:", uploadPrompt);
-    // In a real app, this would fetch and evaluate the URL
+    if (!uploadUrl.trim() && !uploadedFileName) return;
+    console.log("Evaluating:", { url: uploadUrl, file: uploadedFileName, prompt: uploadPrompt });
   };
 
   return (
     <div className="min-h-screen pt-20 px-6 pb-12">
       <div className="max-w-5xl mx-auto">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <h1 className="text-3xl font-bold">
-              UI Score <span className="gradient-text">Evaluation</span>
-            </h1>
-            <button
-              onClick={() => setShowUpload(!showUpload)}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl gradient-purple text-primary-foreground text-sm font-semibold hover:scale-[1.02] transition-transform neon-glow-sm"
-            >
-              <Upload className="w-4 h-4" />
-              Evaluate External UI
-            </button>
-          </div>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
+          <h1 className="text-3xl font-bold mb-2">
+            UI Score <span className="gradient-text">Evaluation</span>
+          </h1>
           <p className="text-muted-foreground mb-6">AI-powered analysis of your prototypes' design quality</p>
         </motion.div>
 
-        {/* Upload Section */}
-        {showUpload && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            className="glass rounded-2xl p-6 mb-6"
-          >
-            <h3 className="text-sm font-semibold text-foreground mb-4">Upload a link or image to evaluate</h3>
+        {/* Always-visible Evaluate External UI Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="glass rounded-2xl p-6 mb-6"
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <Upload className="w-4 h-4 text-primary" />
+            <h3 className="text-sm font-semibold text-foreground">Evaluate External UI</h3>
+          </div>
 
-            <div className="grid sm:grid-cols-2 gap-4 mb-4">
-              {/* URL Input */}
-              <div className="space-y-2">
-                <label className="text-xs text-muted-foreground flex items-center gap-1.5">
-                  <Link2 className="w-3.5 h-3.5" /> Paste a website URL
-                </label>
-                <input
-                  value={uploadUrl}
-                  onChange={(e) => setUploadUrl(e.target.value)}
-                  placeholder="https://example.com"
-                  className="w-full bg-secondary/50 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/50 transition-shadow"
-                />
-              </div>
-
-              {/* Image Upload */}
-              <div className="space-y-2">
-                <label className="text-xs text-muted-foreground flex items-center gap-1.5">
-                  <Image className="w-3.5 h-3.5" /> Or upload a screenshot
-                </label>
-                <label className="flex items-center justify-center gap-2 w-full h-[42px] bg-secondary/50 rounded-xl border border-dashed border-border/50 cursor-pointer hover:border-primary/30 transition-colors">
-                  <Upload className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Choose file</span>
-                  <input type="file" accept="image/*" onChange={handleUploadImage} className="hidden" />
-                </label>
-              </div>
-            </div>
-
-            {/* Prompt */}
-            <div className="space-y-2 mb-4">
-              <label className="text-xs text-muted-foreground">Evaluation prompt (optional)</label>
+          <div className="grid sm:grid-cols-2 gap-4 mb-4">
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <Link2 className="w-3.5 h-3.5" /> Paste a website URL
+              </label>
               <input
-                value={uploadPrompt}
-                onChange={(e) => setUploadPrompt(e.target.value)}
-                placeholder="e.g. Focus on mobile usability and color accessibility..."
+                value={uploadUrl}
+                onChange={(e) => setUploadUrl(e.target.value)}
+                placeholder="https://example.com"
                 className="w-full bg-secondary/50 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/50 transition-shadow"
               />
             </div>
 
-            <button
-              onClick={handleEvaluateUrl}
-              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl gradient-purple text-primary-foreground text-sm font-semibold hover:scale-[1.02] transition-transform"
-            >
-              <Sparkles className="w-4 h-4" />
-              Evaluate Now
-            </button>
-          </motion.div>
-        )}
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <Image className="w-3.5 h-3.5" /> Or upload a screenshot
+              </label>
+              <label className="flex items-center justify-center gap-2 w-full h-[42px] bg-secondary/50 rounded-xl border border-dashed border-border/50 cursor-pointer hover:border-primary/30 transition-colors">
+                {uploadedFileName ? (
+                  <span className="text-sm text-foreground truncate px-2">{uploadedFileName}</span>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Choose file</span>
+                  </>
+                )}
+                <input type="file" accept="image/*" onChange={handleUploadImage} className="hidden" />
+              </label>
+            </div>
+          </div>
+
+          <div className="space-y-2 mb-4">
+            <label className="text-xs text-muted-foreground">Evaluation prompt (optional)</label>
+            <textarea
+              value={uploadPrompt}
+              onChange={(e) => setUploadPrompt(e.target.value)}
+              placeholder="e.g. Focus on mobile usability, color accessibility, button sizing..."
+              rows={2}
+              className="w-full bg-secondary/50 rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/50 transition-shadow resize-none"
+            />
+          </div>
+
+          <button
+            onClick={handleEvaluateUrl}
+            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl gradient-purple text-primary-foreground text-sm font-semibold hover:scale-[1.02] transition-transform neon-glow-sm"
+          >
+            <Sparkles className="w-4 h-4" />
+            Evaluate Now
+          </button>
+        </motion.div>
 
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Project list */}
@@ -144,7 +134,7 @@ const UIScorePage = () => {
                 onClick={() => setSelected(i)}
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.1, duration: 0.4 }}
+                transition={{ delay: i * 0.1 + 0.2, duration: 0.4 }}
                 whileHover={{ scale: 1.02 }}
                 className={`w-full text-left p-4 rounded-xl transition-all duration-300 ${
                   selected === i ? "glass neon-glow-sm border-primary/30" : "glass hover:border-primary/20"

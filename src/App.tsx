@@ -8,6 +8,7 @@ import Workspace from "./pages/Workspace";
 import UIScore from "./pages/UIScore";
 import MemoryGraph from "./pages/MemoryGraph";
 import Settings from "./pages/Settings";
+import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -24,6 +25,7 @@ const App = () => (
           <Route path="/ui-score" element={<UIScore />} />
           <Route path="/memory-graph" element={<MemoryGraph />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/login" element={<Login />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
