@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { User, LogOut, UserPlus, Settings, ChevronDown } from "lucide-react";
+import { User, LogOut, UserPlus, Settings, ChevronDown, LogIn } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
 const ProfileDropdown = () => {
   const [open, setOpen] = useState(false);
+  const [isLoggedIn] = useState(true); // Will be replaced with real auth
   const ref = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
@@ -16,12 +17,29 @@ const ProfileDropdown = () => {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  if (!isLoggedIn) {
+    return (
+      <div className="flex items-center gap-2">
+        <Link
+          to="/login"
+          className="px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Sign In
+        </Link>
+        <Link
+          to="/login"
+          onClick={() => {/* will set signup mode */}}
+          className="px-3 py-1.5 rounded-lg text-sm gradient-purple text-primary-foreground font-medium hover:scale-[1.02] transition-transform"
+        >
+          Sign Up
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 group"
-      >
+      <button onClick={() => setOpen(!open)} className="flex items-center gap-1.5 group">
         <img
           src="https://api.dicebear.com/9.x/glass/svg?seed=Felix"
           alt="Avatar"
@@ -44,11 +62,7 @@ const ProfileDropdown = () => {
               <p className="text-xs text-muted-foreground">designer@protocraft.ai</p>
             </div>
             <div className="p-1.5">
-              <Link
-                to="/settings"
-                onClick={() => setOpen(false)}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/80 transition-colors"
-              >
+              <Link to="/settings" onClick={() => setOpen(false)} className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/80 transition-colors">
                 <Settings className="w-4 h-4" /> Settings
               </Link>
               <button className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/80 transition-colors">
@@ -59,6 +73,9 @@ const ProfileDropdown = () => {
               </button>
             </div>
             <div className="p-1.5 border-t border-border/50">
+              <Link to="/login" onClick={() => setOpen(false)} className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-primary hover:bg-primary/10 transition-colors">
+                <LogIn className="w-4 h-4" /> Sign In / Sign Up
+              </Link>
               <button
                 onClick={() => { setOpen(false); navigate("/login"); }}
                 className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-destructive hover:bg-destructive/10 transition-colors"
