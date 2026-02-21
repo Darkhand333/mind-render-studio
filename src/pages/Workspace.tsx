@@ -1,14 +1,12 @@
 import GlassNavbar from "../components/GlassNavbar";
 import WorkspaceCanvas from "../components/WorkspaceCanvas";
 import LivingBackground from "../components/LivingBackground";
-import BackButton from "../components/BackButton";
 
 const Workspace = () => {
   return (
     <div className="relative min-h-screen">
       <LivingBackground />
       <GlassNavbar />
-      <BackButton />
       <WorkspaceCanvas />
     </div>
   );
