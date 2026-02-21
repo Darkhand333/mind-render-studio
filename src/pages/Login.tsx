@@ -1,19 +1,42 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Mail, Lock, Eye, EyeOff, Sparkles, ArrowRight } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Mail, Lock, Eye, EyeOff, Sparkles, ArrowRight, User } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 import LivingBackground from "../components/LivingBackground";
+import { useToast } from "@/hooks/use-toast";
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
+  const [submitting, setSubmitting] = useState(false);
+  const { signIn, signUp, resetPassword } = useAuth();
+  const navigate = useNavigate();
+  const { toast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Backend auth will be added when Cloud is enabled
-    console.log(mode, { email, password });
+    setSubmitting(true);
+    try {
+      if (mode === "login") {
+        const { error } = await signIn(email, password);
+        if (error) { toast({ title: "Sign in failed", description: error.message, variant: "destructive" }); }
+        else { navigate("/"); }
+      } else if (mode === "signup") {
+        const { error } = await signUp(email, password, displayName);
+        if (error) { toast({ title: "Sign up failed", description: error.message, variant: "destructive" }); }
+        else { toast({ title: "Check your email", description: "We sent you a confirmation link. Please verify your email to sign in." }); }
+      } else {
+        const { error } = await resetPassword(email);
+        if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); }
+        else { toast({ title: "Email sent", description: "Check your inbox for the password reset link." }); }
+      }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -43,53 +66,44 @@ const Login = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="glass rounded-2xl p-6 space-y-4">
+          {mode === "signup" && (
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Display Name</label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Your name"
+                  className="w-full bg-secondary/50 rounded-xl pl-10 pr-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/50" />
+              </div>
+            </div>
+          )}
           <div>
             <label className="text-xs text-muted-foreground mb-1 block">Email</label>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                className="w-full bg-secondary/50 rounded-xl pl-10 pr-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/50"
-                required
-              />
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"
+                className="w-full bg-secondary/50 rounded-xl pl-10 pr-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/50" required />
             </div>
           </div>
-
           {mode !== "forgot" && (
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Password</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-secondary/50 rounded-xl pl-10 pr-10 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/50"
-                  required
-                />
+                <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••"
+                  className="w-full bg-secondary/50 rounded-xl pl-10 pr-10 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/50" required />
                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
           )}
-
           {mode === "login" && (
-            <button type="button" onClick={() => setMode("forgot")} className="text-xs text-primary hover:underline">
-              Forgot password?
-            </button>
+            <button type="button" onClick={() => setMode("forgot")} className="text-xs text-primary hover:underline">Forgot password?</button>
           )}
-
-          <button
-            type="submit"
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl gradient-purple text-primary-foreground font-semibold hover:scale-[1.02] transition-transform neon-glow-sm"
-          >
-            {mode === "login" ? "Sign In" : mode === "signup" ? "Create Account" : "Send Reset Link"}
-            <ArrowRight className="w-4 h-4" />
+          <button type="submit" disabled={submitting}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl gradient-purple text-primary-foreground font-semibold hover:scale-[1.02] transition-transform neon-glow-sm disabled:opacity-50">
+            {submitting ? "Please wait..." : mode === "login" ? "Sign In" : mode === "signup" ? "Create Account" : "Send Reset Link"}
+            {!submitting && <ArrowRight className="w-4 h-4" />}
           </button>
         </form>
 
