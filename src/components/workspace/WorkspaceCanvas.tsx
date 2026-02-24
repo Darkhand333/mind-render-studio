@@ -1,0 +1,746 @@
+import { useState, useRef, useEffect, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  MousePointer, Square, Circle, Type, Image, Layout, Plus, Hand,
+  ZoomIn, ZoomOut, Move, Layers, Star, Diamond, Triangle, Hexagon,
+  Undo, Redo, Grid3X3, Download, PanelLeft, PanelRight, Pen, Pencil,
+  Paintbrush, Minus, ArrowUpRight, Box, Slice, Navigation, Scale,
+  FileText, File, Search, Package, Component, Home, X, Sparkles,
+  Eye, EyeOff, Lock, Unlock, ChevronRight, ChevronDown
+} from "lucide-react";
+import ComponentExplainer from "../ComponentExplainer";
+import HomeSidebar from "./HomeSidebar";
+import RightPanel from "./RightPanel";
+import { CanvasElement, LeftTab, defaultColors, toolGroups } from "./types";
+
+const iconMap: Record<string, any> = {
+  MousePointer, Hand, Scale, Square, Circle, Triangle, Diamond, Star, Hexagon,
+  Minus, ArrowUpRight, Pen, Pencil, Paintbrush, Type, Image, Layout, Box, Slice, Navigation,
+};
+
+const allTools = toolGroups.flatMap(g => g.tools);
+let nextId = 1;
+
+const WorkspaceCanvas = () => {
+  const [activeTool, setActiveTool] = useState("Select");
+  const [showGrid, setShowGrid] = useState(true);
+  const [zoom, setZoom] = useState(100);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [panning, setPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  const [elements, setElements] = useState<CanvasElement[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [lastSelectedId, setLastSelectedId] = useState<number | null>(null);
+  const [drawing, setDrawing] = useState(false);
+  const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
+  const [drawCurrent, setDrawCurrent] = useState<{ x: number; y: number } | null>(null);
+  const [penPoints, setPenPoints] = useState<{ x: number; y: number }[]>([]);
+  const [history, setHistory] = useState<CanvasElement[][]>([]);
+  const [historyIdx, setHistoryIdx] = useState(-1);
+  const [dragging, setDragging] = useState<{ id: number; offsetX: number; offsetY: number } | null>(null);
+  const [resizing, setResizing] = useState<{ id: number; handle: string; startX: number; startY: number; startW: number; startH: number; startElX: number; startElY: number } | null>(null);
+  const [editingTextId, setEditingTextId] = useState<number | null>(null);
+  const [leftSidebarView, setLeftSidebarView] = useState<"home" | "workspace">("workspace");
+  const [leftTab, setLeftTab] = useState<LeftTab>("layers");
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
+  const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const [pages, setPages] = useState([{ id: 1, name: "Page 1", active: true }]);
+  const [showExportModal, setShowExportModal] = useState(false);
+
+  const canvasRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (selectedId !== null) setLastSelectedId(selectedId);
+  }, [selectedId]);
+
+  const activeElId = selectedId ?? lastSelectedId;
+  const activeEl = activeElId ? elements.find(e => e.id === activeElId) || null : null;
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (editingTextId) return;
+      const key = e.key.toUpperCase();
+      const tool = allTools.find(t => t.shortcut === key);
+      if (tool && !e.metaKey && !e.ctrlKey) { setActiveTool(tool.label); e.preventDefault(); }
+      if (e.key === "Delete" || e.key === "Backspace") { if (selectedId) { handleDelete(); e.preventDefault(); } }
+      if ((e.metaKey || e.ctrlKey) && e.key === "z") { handleUndo(); e.preventDefault(); }
+      if ((e.metaKey || e.ctrlKey) && e.key === "y") { handleRedo(); e.preventDefault(); }
+      if ((e.metaKey || e.ctrlKey) && e.key === "d") { e.preventDefault(); handleDuplicate(); }
+      if (e.key === "Escape") { setSelectedId(null); setActiveTool("Select"); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [selectedId, editingTextId, elements, historyIdx]);
+
+  const pushHistory = useCallback(() => {
+    setHistory(prev => { const h = prev.slice(0, historyIdx + 1); h.push(JSON.parse(JSON.stringify(elements))); return h; });
+    setHistoryIdx(i => i + 1);
+  }, [elements, historyIdx]);
+
+  const handleUndo = () => { if (historyIdx >= 0) { setElements(JSON.parse(JSON.stringify(history[historyIdx]))); setHistoryIdx(i => i - 1); } };
+  const handleRedo = () => { if (historyIdx < history.length - 1) { setElements(JSON.parse(JSON.stringify(history[historyIdx + 1]))); setHistoryIdx(i => i + 1); } };
+  const handleDelete = () => { if (!selectedId) return; pushHistory(); setElements(p => p.filter(el => el.id !== selectedId)); setSelectedId(null); setLastSelectedId(null); };
+  const handleDuplicate = () => {
+    if (!selectedId) return;
+    const el = elements.find(e => e.id === selectedId);
+    if (!el) return;
+    pushHistory();
+    const newEl = { ...el, id: nextId++, x: el.x + 20, y: el.y + 20, label: `${el.label} copy` };
+    setElements(prev => [...prev, newEl]);
+    setSelectedId(newEl.id);
+  };
+
+  const isDrawingTool = ["Rectangle", "Ellipse", "Triangle", "Diamond", "Star", "Polygon", "Line", "Arrow", "Frame", "Text", "Component", "Slice", "Section"].includes(activeTool);
+  const isPenTool = ["Pen", "Pencil", "Brush"].includes(activeTool);
+
+  const getCanvasPos = (e: React.MouseEvent | MouseEvent) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    return { x: (e.clientX - rect.left - panOffset.x) / (zoom / 100), y: (e.clientY - rect.top - panOffset.y) / (zoom / 100) };
+  };
+
+  const handleCanvasMouseDown = (e: React.MouseEvent) => {
+    if (activeTool === "Pan") { setPanning(true); setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y }); return; }
+    if (e.target !== canvasRef.current && !isDrawingTool && !isPenTool) return;
+    const pos = getCanvasPos(e);
+    if (isPenTool) { setPenPoints(prev => [...prev, pos]); return; }
+    if (isDrawingTool) { setDrawing(true); setDrawStart(pos); setDrawCurrent(pos); return; }
+    if (activeTool === "Select") setSelectedId(null);
+  };
+
+  const handleCanvasMouseUp = (e: React.MouseEvent) => {
+    if (panning) { setPanning(false); return; }
+    if (resizing) { setResizing(null); return; }
+    if (drawing && drawStart) {
+      const pos = getCanvasPos(e);
+      const x = Math.min(drawStart.x, pos.x);
+      const y = Math.min(drawStart.y, pos.y);
+      const w = Math.max(Math.abs(pos.x - drawStart.x), 20);
+      const h = Math.max(Math.abs(pos.y - drawStart.y), 20);
+      pushHistory();
+      const color = defaultColors[Math.floor(Math.random() * defaultColors.length)];
+      const newEl: CanvasElement = {
+        id: nextId++, type: activeTool === "Component" ? "Rectangle" : activeTool, x, y, w, h,
+        label: `${activeTool} ${nextId}`, fillColor: color, strokeColor: color, strokeWidth: 2,
+        opacity: 100, rotation: 0, cornerRadius: activeTool === "Rectangle" ? 8 : 0,
+        visible: true, locked: false, blendMode: "Normal", strokeDash: "", strokeCap: "butt", strokeJoin: "miter",
+      };
+      if (activeTool === "Text") { newEl.text = "Double-click to edit"; newEl.w = 200; newEl.h = 40; newEl.fontSize = 16; newEl.fontWeight = "400"; newEl.fontFamily = "Inter"; newEl.textAlign = "left"; newEl.fillColor = "#ffffff"; }
+      if (activeTool === "Line" || activeTool === "Arrow") { newEl.x = drawStart.x; newEl.y = drawStart.y; newEl.w = pos.x - drawStart.x; newEl.h = pos.y - drawStart.y; }
+      setElements(prev => [...prev, newEl]);
+      setSelectedId(newEl.id);
+      setDrawing(false); setDrawStart(null); setDrawCurrent(null);
+    }
+    if (dragging) setDragging(null);
+  };
+
+  const handleCanvasMouseMove = (e: React.MouseEvent) => {
+    if (panning) { setPanOffset({ x: e.clientX - panStart.x, y: e.clientY - panStart.y }); return; }
+    if (drawing && drawStart) setDrawCurrent(getCanvasPos(e));
+    if (dragging) {
+      const pos = getCanvasPos(e);
+      setElements(prev => prev.map(el => el.id === dragging.id ? { ...el, x: pos.x - dragging.offsetX, y: pos.y - dragging.offsetY } : el));
+    }
+    if (resizing) {
+      const pos = getCanvasPos(e);
+      const dx = pos.x - resizing.startX, dy = pos.y - resizing.startY;
+      setElements(prev => prev.map(el => {
+        if (el.id !== resizing.id) return el;
+        let { startW, startH, startElX, startElY } = resizing;
+        let newW = startW, newH = startH, newX = startElX, newY = startElY;
+        if (resizing.handle.includes("r")) newW = Math.max(20, startW + dx);
+        if (resizing.handle.includes("b")) newH = Math.max(20, startH + dy);
+        if (resizing.handle.includes("l")) { newW = Math.max(20, startW - dx); newX = startElX + dx; }
+        if (resizing.handle.includes("t")) { newH = Math.max(20, startH - dy); newY = startElY + dy; }
+        return { ...el, x: newX, y: newY, w: newW, h: newH };
+      }));
+    }
+  };
+
+  const finishPen = () => {
+    if (penPoints.length < 2) { setPenPoints([]); return; }
+    pushHistory();
+    const minX = Math.min(...penPoints.map(p => p.x));
+    const minY = Math.min(...penPoints.map(p => p.y));
+    const newEl: CanvasElement = {
+      id: nextId++, type: "Pen", x: minX, y: minY, w: 0, h: 0,
+      label: `Path ${nextId}`, fillColor: "transparent", strokeColor: defaultColors[4], strokeWidth: 2,
+      opacity: 100, rotation: 0, cornerRadius: 0, visible: true, locked: false,
+      points: penPoints.map(p => ({ x: p.x - minX, y: p.y - minY })),
+    };
+    setElements(prev => [...prev, newEl]);
+    setSelectedId(newEl.id);
+    setPenPoints([]);
+  };
+
+  const updateSelected = (updates: Partial<CanvasElement>) => {
+    const id = selectedId ?? lastSelectedId;
+    if (!id) return;
+    setElements(prev => prev.map(el => el.id === id ? { ...el, ...updates } : el));
+  };
+
+  const handleAlign = (type: string) => {
+    const id = selectedId ?? lastSelectedId;
+    if (!id) return;
+    const canvasRect = canvasRef.current?.getBoundingClientRect();
+    if (!canvasRect) return;
+    const cw = canvasRect.width / (zoom / 100), ch = canvasRect.height / (zoom / 100);
+    const el = elements.find(e => e.id === id);
+    if (!el) return;
+    pushHistory();
+    const alignMap: Record<string, Partial<CanvasElement>> = {
+      "left": { x: 0 }, "center-h": { x: (cw - el.w) / 2 }, "right": { x: cw - el.w },
+      "top": { y: 0 }, "center-v": { y: (ch - el.h) / 2 }, "bottom": { y: ch - el.h },
+    };
+    if (alignMap[type]) updateSelected(alignMap[type]);
+  };
+
+  const handleFlip = (dir: "h" | "v") => {
+    if (!activeEl) return;
+    pushHistory();
+    if (dir === "h") updateSelected({ flipH: !activeEl.flipH });
+    else updateSelected({ flipV: !activeEl.flipV });
+  };
+
+  const handleNewProject = (width: number, height: number, name: string) => {
+    // Create a frame element representing the artboard
+    pushHistory();
+    const newFrame: CanvasElement = {
+      id: nextId++, type: "Frame", x: 100, y: 100, w: width > 2000 ? width / 2 : width, h: height > 2000 ? height / 2 : height,
+      label: name, fillColor: "#1a1a2e", strokeColor: "hsl(263, 70%, 58%)", strokeWidth: 1,
+      opacity: 100, rotation: 0, cornerRadius: 0, visible: true, locked: false,
+    };
+    setElements(prev => [...prev, newFrame]);
+    setSelectedId(newFrame.id);
+    setLeftSidebarView("workspace");
+  };
+
+  const toggleSection = (label: string) => setCollapsedSections(p => ({ ...p, [label]: !p[label] }));
+  const leftSidebarWidth = leftSidebarOpen ? 260 : 0;
+  const rightPanelWidth = rightPanelOpen ? 280 : 0;
+
+  const filteredElements = searchQuery
+    ? elements.filter(el => el.label.toLowerCase().includes(searchQuery.toLowerCase()) || el.type.toLowerCase().includes(searchQuery.toLowerCase()))
+    : elements;
+
+  // Export
+  const generateExport = (format: string) => {
+    const visibleEls = elements.filter(el => el.visible);
+    if (format === "svg") {
+      const parts = [`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">`, `  <rect width="1200" height="800" fill="#0d0d14"/>`];
+      visibleEls.forEach(el => {
+        parts.push(`  <g transform="translate(${el.x},${el.y}) rotate(${el.rotation})" opacity="${el.opacity / 100}">`);
+        if (el.type === "Rectangle" || el.type === "Frame") parts.push(`    <rect width="${el.w}" height="${el.h}" rx="${el.cornerRadius}" fill="${el.fillColor}33" stroke="${el.strokeColor}" stroke-width="${el.strokeWidth}"/>`);
+        else if (el.type === "Ellipse") parts.push(`    <ellipse cx="${el.w / 2}" cy="${el.h / 2}" rx="${el.w / 2}" ry="${el.h / 2}" fill="${el.fillColor}33" stroke="${el.strokeColor}" stroke-width="${el.strokeWidth}"/>`);
+        else if (el.type === "Text") parts.push(`    <text x="0" y="${el.fontSize || 16}" fill="${el.fillColor}" font-size="${el.fontSize}" font-family="${el.fontFamily || 'Inter'}">${el.text || el.label}</text>`);
+        parts.push(`  </g>`);
+      });
+      parts.push(`</svg>`);
+      return parts.join("\n");
+    }
+    if (format === "html") {
+      const l = ['<!DOCTYPE html>', '<html lang="en">', '<head>', '  <meta charset="UTF-8">', '  <meta name="viewport" content="width=device-width, initial-scale=1.0">', '  <title>ProtoCraft Export</title>', '  <style>', '    * { margin: 0; padding: 0; box-sizing: border-box; }', '    body { background: #0d0d14; position: relative; width: 1200px; height: 800px; overflow: hidden; }'];
+      visibleEls.forEach(el => {
+        l.push(`    .el-${el.id} { position: absolute; left: ${el.x}px; top: ${el.y}px; width: ${el.w}px; height: ${el.h}px; background: ${el.fillColor}33; border: ${el.strokeWidth}px solid ${el.strokeColor}; opacity: ${el.opacity / 100}; ${el.type === "Ellipse" ? "border-radius: 50%;" : el.cornerRadius ? `border-radius: ${el.cornerRadius}px;` : ""} ${el.rotation ? `transform: rotate(${el.rotation}deg);` : ""} }`);
+      });
+      l.push('  </style>', '</head>', '<body>');
+      visibleEls.forEach(el => l.push(`  <div class="el-${el.id}">${el.type === "Text" ? (el.text || el.label) : ""}</div>`));
+      l.push('</body>', '</html>');
+      return l.join("\n");
+    }
+    if (format === "react") {
+      const l = ['import React from "react";', '', 'const Design = () => {', '  return (', '    <div style={{ position: "relative", width: 1200, height: 800, background: "#0d0d14", overflow: "hidden" }}>'];
+      visibleEls.forEach(el => {
+        const s: Record<string, any> = { position: "absolute", left: el.x, top: el.y, width: el.w, height: el.h, background: `${el.fillColor}33`, border: `${el.strokeWidth}px solid ${el.strokeColor}`, opacity: el.opacity / 100 };
+        if (el.type === "Ellipse") s.borderRadius = "50%"; else if (el.cornerRadius) s.borderRadius = el.cornerRadius;
+        if (el.rotation) s.transform = `rotate(${el.rotation}deg)`;
+        if (el.type === "Text") { s.color = el.fillColor; s.fontSize = el.fontSize || 16; s.fontFamily = `${el.fontFamily || 'Inter'}, sans-serif`; s.background = "transparent"; s.border = "none"; }
+        l.push(`      <div style={${JSON.stringify(s)}}${el.type === "Text" ? `>${el.text || el.label}</div>` : " />"}`);
+      });
+      l.push('    </div>', '  );', '};', '', 'export default Design;');
+      return l.join("\n");
+    }
+    if (format === "vue") {
+      const l = ['<template>', '  <div class="canvas">'];
+      visibleEls.forEach(el => l.push(`    <div class="el-${el.id}">${el.type === "Text" ? (el.text || el.label) : ""}</div>`));
+      l.push('  </div>', '</template>', '', '<style scoped>', '.canvas { position: relative; width: 1200px; height: 800px; background: #0d0d14; overflow: hidden; }');
+      visibleEls.forEach(el => l.push(`.el-${el.id} { position: absolute; left: ${el.x}px; top: ${el.y}px; width: ${el.w}px; height: ${el.h}px; background: ${el.fillColor}33; border: ${el.strokeWidth}px solid ${el.strokeColor}; opacity: ${el.opacity / 100}; ${el.type === "Ellipse" ? "border-radius: 50%;" : el.cornerRadius ? `border-radius: ${el.cornerRadius}px;` : ""} }`));
+      l.push('</style>');
+      return l.join("\n");
+    }
+    if (format === "tailwind") {
+      const l = ['export default function Design() {', '  return (', '    <div className="relative w-[1200px] h-[800px] bg-[#0d0d14] overflow-hidden">'];
+      visibleEls.forEach(el => {
+        const cls = [`absolute left-[${Math.round(el.x)}px] top-[${Math.round(el.y)}px] w-[${Math.round(el.w)}px] h-[${Math.round(el.h)}px]`];
+        if (el.type === "Ellipse") cls.push("rounded-full"); else if (el.cornerRadius) cls.push(`rounded-[${el.cornerRadius}px]`);
+        l.push(`      <div className="${cls.join(" ")}" style={{background:"${el.fillColor}33",border:"${el.strokeWidth}px solid ${el.strokeColor}"}}${el.type === "Text" ? `>${el.text || el.label}</div>` : " />"}`);
+      });
+      l.push('    </div>', '  );', '}');
+      return l.join("\n");
+    }
+    return JSON.stringify(visibleEls, null, 2);
+  };
+
+  const downloadExport = (format: string) => {
+    const content = generateExport(format);
+    const ext: Record<string, string> = { html: "html", react: "tsx", vue: "vue", svg: "svg", tailwind: "tsx", json: "json" };
+    const mime: Record<string, string> = { html: "text/html", react: "text/plain", vue: "text/plain", svg: "image/svg+xml", tailwind: "text/plain", json: "application/json" };
+    const blob = new Blob([content], { type: mime[format] || "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `protocraft-export.${ext[format] || "txt"}`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Shape rendering
+  const renderShapePreview = () => {
+    if (!drawing || !drawStart || !drawCurrent) return null;
+    const x = Math.min(drawStart.x, drawCurrent.x), y = Math.min(drawStart.y, drawCurrent.y);
+    const w = Math.abs(drawCurrent.x - drawStart.x), h = Math.abs(drawCurrent.y - drawStart.y);
+    if (w < 2 && h < 2) return null;
+    const ps = { fill: "hsl(263, 70%, 58%, 0.15)", stroke: "hsl(263, 70%, 58%)", strokeWidth: 2, strokeDasharray: "6 3" };
+    if (activeTool === "Line" || activeTool === "Arrow") {
+      return (
+        <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 5 }}>
+          <line x1={drawStart.x} y1={drawStart.y} x2={drawCurrent.x} y2={drawCurrent.y} {...ps} fill="none" />
+          {activeTool === "Arrow" && (() => {
+            const dx = drawCurrent.x - drawStart.x, dy = drawCurrent.y - drawStart.y;
+            const len = Math.sqrt(dx * dx + dy * dy) || 1;
+            const ax = dx / len, ay = dy / len, px = -ay, py = ax;
+            return <polygon points={`${drawCurrent.x},${drawCurrent.y} ${drawCurrent.x - ax * 10 + px * 4},${drawCurrent.y - ay * 10 + py * 4} ${drawCurrent.x - ax * 10 - px * 4},${drawCurrent.y - ay * 10 - py * 4}`} fill="hsl(263, 70%, 58%)" />;
+          })()}
+        </svg>
+      );
+    }
+    return (
+      <svg className="absolute pointer-events-none" style={{ left: x, top: y, width: w, height: h, zIndex: 5, overflow: "visible" }}>
+        {["Rectangle", "Frame", "Component", "Section", "Slice"].includes(activeTool) ? <rect x={0} y={0} width={w} height={h} rx={activeTool === "Rectangle" ? 8 : 0} {...ps} />
+          : activeTool === "Ellipse" ? <ellipse cx={w / 2} cy={h / 2} rx={w / 2} ry={h / 2} {...ps} />
+          : activeTool === "Triangle" ? <polygon points={`${w / 2},0 ${w},${h} 0,${h}`} {...ps} />
+          : activeTool === "Diamond" ? <polygon points={`${w / 2},0 ${w},${h / 2} ${w / 2},${h} 0,${h / 2}`} {...ps} />
+          : activeTool === "Star" ? (() => { const cx = w / 2, cy2 = h / 2, or = Math.min(cx, cy2), ir = or * 0.4; const pts = Array.from({ length: 10 }, (_, i) => { const r = i % 2 === 0 ? or : ir; const a = (Math.PI / 5) * i - Math.PI / 2; return `${cx + r * Math.cos(a)},${cy2 + r * Math.sin(a)}`; }).join(" "); return <polygon points={pts} {...ps} />; })()
+          : activeTool === "Polygon" ? (() => { const cx = w / 2, cy2 = h / 2, r = Math.min(cx, cy2); const pts = Array.from({ length: 6 }, (_, i) => { const a = (Math.PI / 3) * i - Math.PI / 2; return `${cx + r * Math.cos(a)},${cy2 + r * Math.sin(a)}`; }).join(" "); return <polygon points={pts} {...ps} />; })()
+          : activeTool === "Text" ? <><rect x={0} y={0} width={w} height={h} {...ps} /><text x={4} y={h / 2 + 4} fill="hsl(263, 70%, 58%)" fontSize={12} opacity={0.6}>Text</text></>
+          : null}
+      </svg>
+    );
+  };
+
+  const renderShape = (el: CanvasElement) => {
+    const s: any = { fill: el.fillColor + "33", stroke: el.strokeColor, strokeWidth: el.strokeWidth };
+    if (el.strokeDash) s.strokeDasharray = el.strokeDash;
+    if (el.strokeCap) s.strokeLinecap = el.strokeCap;
+    if (el.strokeJoin) s.strokeLinejoin = el.strokeJoin;
+    switch (el.type) {
+      case "Rectangle": case "Frame": case "Slice": case "Section":
+        return <rect x={1} y={1} width={el.w - 2} height={el.h - 2} rx={el.cornerRadius} {...s} />;
+      case "Ellipse":
+        return <ellipse cx={el.w / 2} cy={el.h / 2} rx={el.w / 2 - 1} ry={el.h / 2 - 1} {...s} />;
+      case "Triangle":
+        return <polygon points={`${el.w / 2},2 ${el.w - 2},${el.h - 2} 2,${el.h - 2}`} {...s} />;
+      case "Diamond":
+        return <polygon points={`${el.w / 2},2 ${el.w - 2},${el.h / 2} ${el.w / 2},${el.h - 2} 2,${el.h / 2}`} {...s} />;
+      case "Star": {
+        const cx = el.w / 2, cy = el.h / 2, or = Math.min(cx, cy) - 2, ir = or * 0.4;
+        const pts = Array.from({ length: 10 }, (_, i) => { const r = i % 2 === 0 ? or : ir; const a = (Math.PI / 5) * i - Math.PI / 2; return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`; }).join(" ");
+        return <polygon points={pts} {...s} />;
+      }
+      case "Polygon": {
+        const cx = el.w / 2, cy = el.h / 2, r = Math.min(cx, cy) - 2;
+        const pts = Array.from({ length: 6 }, (_, i) => { const a = (Math.PI / 3) * i - Math.PI / 2; return `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`; }).join(" ");
+        return <polygon points={pts} {...s} />;
+      }
+      case "Line": return <line x1={0} y1={0} x2={el.w} y2={el.h} stroke={el.strokeColor} strokeWidth={el.strokeWidth} />;
+      case "Arrow": {
+        const len = Math.sqrt(el.w ** 2 + el.h ** 2) || 1;
+        const ax = el.w / len, ay = el.h / len, px = -ay, py = ax;
+        return (<><line x1={0} y1={0} x2={el.w} y2={el.h} stroke={el.strokeColor} strokeWidth={el.strokeWidth} /><polygon points={`${el.w},${el.h} ${el.w - ax * 12 + px * 5},${el.h - ay * 12 + py * 5} ${el.w - ax * 12 - px * 5},${el.h - ay * 12 - py * 5}`} fill={el.strokeColor} /></>);
+      }
+      case "Pen": case "Pencil": case "Brush":
+        if (el.points && el.points.length > 1) {
+          const d = el.points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
+          return <path d={d} fill="none" stroke={el.strokeColor} strokeWidth={el.strokeWidth} strokeLinecap="round" strokeLinejoin="round" />;
+        }
+        return null;
+      default: return null;
+    }
+  };
+
+  const resizeHandles = ["tl", "tr", "bl", "br", "t", "b", "l", "r"];
+  const getHandleStyle = (handle: string): React.CSSProperties => {
+    const size = 8, half = size / 2;
+    const base: React.CSSProperties = { position: "absolute", width: size, height: size, borderRadius: 2, background: "hsl(var(--primary))", border: "1px solid hsl(var(--primary-foreground))", zIndex: 10 };
+    switch (handle) {
+      case "tl": return { ...base, top: -half, left: -half, cursor: "nwse-resize" };
+      case "tr": return { ...base, top: -half, right: -half, cursor: "nesw-resize" };
+      case "bl": return { ...base, bottom: -half, left: -half, cursor: "nesw-resize" };
+      case "br": return { ...base, bottom: -half, right: -half, cursor: "nwse-resize" };
+      case "t": return { ...base, top: -half, left: "50%", marginLeft: -half, cursor: "ns-resize" };
+      case "b": return { ...base, bottom: -half, left: "50%", marginLeft: -half, cursor: "ns-resize" };
+      case "l": return { ...base, top: "50%", left: -half, marginTop: -half, cursor: "ew-resize" };
+      case "r": return { ...base, top: "50%", right: -half, marginTop: -half, cursor: "ew-resize" };
+      default: return base;
+    }
+  };
+
+  return (
+    <div className="relative min-h-screen pt-14 flex" onMouseUp={() => { if (resizing) setResizing(null); }}>
+      {/* Top toolbar */}
+      <div className="fixed top-14 left-0 right-0 z-30 h-10 glass-strong border-b border-border/30 flex items-center px-2 gap-1">
+        <button onClick={() => setLeftSidebarOpen(!leftSidebarOpen)} className="p-1.5 rounded hover:bg-primary/10 text-muted-foreground hover:text-foreground transition-colors" title="Toggle left panel">
+          <PanelLeft className="w-4 h-4" />
+        </button>
+        <div className="w-px h-5 bg-border/50 mx-1" />
+
+        {toolGroups.map(group => (
+          <div key={group.label} className="flex items-center">
+            {group.tools.map(item => {
+              const Icon = iconMap[item.icon] || Square;
+              return (
+                <button key={item.label} title={`${item.label} (${item.shortcut})`}
+                  onClick={() => { setActiveTool(item.label); if (isPenTool && !["Pen", "Pencil", "Brush"].includes(item.label)) finishPen(); }}
+                  className={`p-1.5 rounded transition-all ${activeTool === item.label ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"}`}>
+                  <Icon className="w-4 h-4" />
+                </button>
+              );
+            })}
+            <div className="w-px h-4 bg-border/30 mx-0.5" />
+          </div>
+        ))}
+
+        <div className="flex-1" />
+
+        <div className="flex items-center gap-1 bg-secondary/50 rounded px-2 py-1">
+          <button onClick={() => setZoom(z => Math.max(z - 10, 25))} className="text-muted-foreground hover:text-foreground"><ZoomOut className="w-3.5 h-3.5" /></button>
+          <span className="text-xs text-foreground font-medium w-10 text-center">{zoom}%</span>
+          <button onClick={() => setZoom(z => Math.min(z + 10, 400))} className="text-muted-foreground hover:text-foreground"><ZoomIn className="w-3.5 h-3.5" /></button>
+        </div>
+        <div className="w-px h-5 bg-border/50 mx-1" />
+
+        <button onClick={handleUndo} title="Undo (Ctrl+Z)" className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60"><Undo className="w-4 h-4" /></button>
+        <button onClick={handleRedo} title="Redo (Ctrl+Y)" className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60"><Redo className="w-4 h-4" /></button>
+        <button onClick={() => setShowGrid(!showGrid)} title="Toggle Grid" className={`p-1.5 rounded transition-colors ${showGrid ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"}`}><Grid3X3 className="w-4 h-4" /></button>
+        <button onClick={() => setShowExportModal(true)} title="Export" className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60"><Download className="w-4 h-4" /></button>
+        <button onClick={() => setRightPanelOpen(!rightPanelOpen)} className="p-1.5 rounded hover:bg-primary/10 text-muted-foreground hover:text-foreground transition-colors" title="Toggle right panel">
+          <PanelRight className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Left Sidebar */}
+      <AnimatePresence>
+        {leftSidebarOpen && (
+          <motion.aside
+            initial={{ x: -leftSidebarWidth, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -leftSidebarWidth, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed left-0 top-24 bottom-0 glass-strong z-20 flex flex-col border-r border-border/30"
+            style={{ width: leftSidebarWidth }}
+          >
+            {leftSidebarView === "home" ? (
+              <HomeSidebar onBackToCanvas={() => setLeftSidebarView("workspace")} onNewProject={handleNewProject} />
+            ) : (
+              <div className="flex flex-col h-full">
+                {/* Tabs */}
+                <div className="flex items-center border-b border-border/30">
+                  {([
+                    { id: "pages" as LeftTab, icon: File, label: "Pages" },
+                    { id: "layers" as LeftTab, icon: Layers, label: "Layers" },
+                    { id: "assets" as LeftTab, icon: Package, label: "Assets" },
+                    { id: "find" as LeftTab, icon: Search, label: "Find" },
+                    { id: "inspector" as LeftTab, icon: Component, label: "Inspect" },
+                  ]).map(tab => (
+                    <button key={tab.id} onClick={() => setLeftTab(tab.id)}
+                      className={`flex-1 flex flex-col items-center gap-0.5 py-2 text-[9px] font-medium transition-colors border-b-2 ${
+                        leftTab === tab.id ? "text-primary border-primary" : "text-muted-foreground hover:text-foreground border-transparent"
+                      }`}>
+                      <tab.icon className="w-3.5 h-3.5" />
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Home link */}
+                <button onClick={() => setLeftSidebarView("home")} className="flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors border-b border-border/20">
+                  <Home className="w-3 h-3" />
+                  <span>Home / Projects</span>
+                </button>
+
+                {/* Tab content */}
+                <div className="flex-1 overflow-y-auto">
+                  {leftTab === "pages" && (
+                    <div className="p-2">
+                      <div className="flex items-center justify-between px-2 mb-2">
+                        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Pages</span>
+                        <button onClick={() => setPages(p => [...p, { id: p.length + 1, name: `Page ${p.length + 1}`, active: false }])} className="p-1 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary"><Plus className="w-3 h-3" /></button>
+                      </div>
+                      {pages.map(page => (
+                        <button key={page.id} onClick={() => setPages(p => p.map(pg => ({ ...pg, active: pg.id === page.id })))}
+                          className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors mb-0.5 ${page.active ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-secondary/60"}`}>
+                          <FileText className="w-3 h-3" />
+                          <span className="flex-1 text-left">{page.name}</span>
+                          {page.active && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {leftTab === "layers" && (
+                    <div className="p-2">
+                      <div className="px-2 mb-2">
+                        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Layers ({elements.length})</span>
+                      </div>
+                      {elements.length === 0 ? (
+                        <div className="text-center py-8">
+                          <Layers className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                          <p className="text-xs text-muted-foreground">No layers yet</p>
+                          <p className="text-[10px] text-muted-foreground/60 mt-1">Draw something on the canvas</p>
+                        </div>
+                      ) : (
+                        [...elements].reverse().map(el => (
+                          <div key={el.id}
+                            className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-colors mb-0.5 cursor-pointer ${
+                              (selectedId === el.id || lastSelectedId === el.id) ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-secondary/60"
+                            }`}
+                            onClick={() => setSelectedId(el.id)}>
+                            <div className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: el.fillColor + "66", border: `1px solid ${el.fillColor}` }} />
+                            <span className="truncate flex-1">{el.label}</span>
+                            <button onClick={ev => { ev.stopPropagation(); setElements(p => p.map(x => x.id === el.id ? { ...x, visible: !x.visible } : x)); }} className="p-0.5 hover:text-foreground shrink-0">
+                              {el.visible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                            </button>
+                            <button onClick={ev => { ev.stopPropagation(); setElements(p => p.map(x => x.id === el.id ? { ...x, locked: !x.locked } : x)); }} className="p-0.5 hover:text-foreground shrink-0">
+                              {el.locked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {leftTab === "assets" && (
+                    <div className="p-2">
+                      <div className="px-2 mb-2">
+                        <input placeholder="Search assets..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                          className="w-full bg-secondary/50 rounded-lg px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/50" />
+                      </div>
+                      <button onClick={() => toggleSection("Components")} className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors">
+                        <span>Components</span>
+                        {collapsedSections["Components"] ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                      </button>
+                      {!collapsedSections["Components"] && (
+                        <div className="px-2 py-1 space-y-0.5">
+                          {["Button", "Card", "Input", "Badge", "Avatar", "Modal", "Tooltip", "Dropdown", "Tabs", "Accordion"].map(c => (
+                            <div key={c} className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-muted-foreground hover:bg-secondary/60 cursor-pointer">
+                              <Component className="w-3 h-3 text-primary" />
+                              <span>{c}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <button onClick={() => toggleSection("Icons")} className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors">
+                        <span>Icons</span>
+                        {collapsedSections["Icons"] ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                      </button>
+                      {!collapsedSections["Icons"] && (
+                        <div className="px-2 py-1 grid grid-cols-6 gap-1">
+                          {[Square, Circle, Triangle, Star, Diamond, Hexagon, ArrowUpRight, Minus, Type, Image, Layout, Box].map((Icon, i) => (
+                            <div key={i} className="w-8 h-8 rounded flex items-center justify-center text-muted-foreground hover:bg-secondary/60 hover:text-foreground cursor-pointer">
+                              <Icon className="w-4 h-4" />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {leftTab === "find" && (
+                    <div className="p-2">
+                      <input placeholder="Find in design..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                        className="w-full bg-secondary/50 rounded-lg px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/50 mb-2" />
+                      {filteredElements.length === 0 ? (
+                        <p className="text-xs text-muted-foreground text-center py-4">No results found</p>
+                      ) : (
+                        filteredElements.map(el => (
+                          <button key={el.id} onClick={() => setSelectedId(el.id)}
+                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-muted-foreground hover:bg-secondary/60 mb-0.5">
+                            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: el.fillColor + "66" }} />
+                            <span className="truncate flex-1 text-left">{el.label}</span>
+                            <span className="text-[9px] text-muted-foreground/60">{el.type}</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {leftTab === "inspector" && (
+                    <ComponentExplainer selectedComponent={activeEl ? { id: activeEl.id, type: activeEl.type.toLowerCase(), label: activeEl.label } : null} />
+                  )}
+                </div>
+              </div>
+            )}
+          </motion.aside>
+        )}
+      </AnimatePresence>
+
+      {/* Canvas */}
+      <div className="flex-1 pt-10" style={{ marginLeft: leftSidebarOpen ? leftSidebarWidth : 0, marginRight: rightPanelOpen ? rightPanelWidth : 0 }}>
+        <motion.div
+          ref={canvasRef} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+          className="relative w-full h-[calc(100vh-6rem)] overflow-hidden bg-[hsl(240,15%,4%)]"
+          style={{ cursor: isPenTool || isDrawingTool ? "crosshair" : activeTool === "Pan" ? (panning ? "grabbing" : "grab") : "default" }}
+          onMouseDown={handleCanvasMouseDown} onMouseUp={handleCanvasMouseUp} onMouseMove={handleCanvasMouseMove}
+          onDoubleClick={() => { if (isPenTool) finishPen(); }}
+        >
+          {showGrid && (
+            <div className="absolute inset-0 opacity-[0.04]" style={{
+              backgroundImage: `linear-gradient(hsl(var(--primary) / 0.5) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--primary) / 0.5) 1px, transparent 1px)`,
+              backgroundSize: "40px 40px", backgroundPosition: `${panOffset.x}px ${panOffset.y}px`,
+            }} />
+          )}
+
+          <div className="absolute bottom-3 left-3 z-10 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/80 backdrop-blur-sm">
+            <Move className="w-3 h-3 text-primary" />
+            <span className="text-[10px] text-muted-foreground font-medium">{activeTool}</span>
+            <span className="text-[10px] text-primary font-bold ml-2">{zoom}%</span>
+            <span className="text-[10px] text-muted-foreground">· {elements.length} objects</span>
+          </div>
+
+          {renderShapePreview()}
+
+          <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 5 }}>
+            {penPoints.length > 0 && (
+              <polyline points={penPoints.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke="hsl(var(--primary))" strokeWidth={2} strokeDasharray="4 2" />
+            )}
+          </svg>
+
+          <div style={{ transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom / 100})`, transformOrigin: "0 0" }}>
+            {elements.filter(el => el.visible).map(el => (
+              <div
+                key={el.id}
+                className={`absolute ${el.locked ? "pointer-events-none opacity-60" : "cursor-move"}`}
+                style={{
+                  left: el.x, top: el.y,
+                  width: ["Line", "Arrow", "Pen", "Pencil", "Brush"].includes(el.type) ? undefined : el.w,
+                  height: ["Line", "Arrow", "Pen", "Pencil", "Brush"].includes(el.type) ? undefined : el.h,
+                  transform: `rotate(${el.rotation}deg) scaleX(${el.flipH ? -1 : 1}) scaleY(${el.flipV ? -1 : 1})`,
+                  transformOrigin: "center center",
+                  opacity: el.opacity / 100,
+                  mixBlendMode: (el.blendMode?.toLowerCase().replace(" ", "-") || "normal") as any,
+                  filter: el.blurAmount ? `blur(${el.blurAmount}px)` : undefined,
+                }}
+                onClick={e => { e.stopPropagation(); if (activeTool === "Select") setSelectedId(el.id === selectedId ? null : el.id); }}
+                onMouseDown={e => {
+                  if (activeTool !== "Select" || el.locked) return;
+                  e.stopPropagation();
+                  const pos = getCanvasPos(e);
+                  setDragging({ id: el.id, offsetX: pos.x - el.x, offsetY: pos.y - el.y });
+                  setSelectedId(el.id);
+                }}
+                onDoubleClick={e => { e.stopPropagation(); if (el.type === "Text") setEditingTextId(el.id); }}
+              >
+                {el.type === "Text" ? (
+                  editingTextId === el.id ? (
+                    <textarea autoFocus value={el.text || ""}
+                      onChange={ev => setElements(prev => prev.map(x => x.id === el.id ? { ...x, text: ev.target.value } : x))}
+                      onBlur={() => setEditingTextId(null)}
+                      className="bg-transparent border border-primary text-foreground outline-none w-full h-full resize-none p-1"
+                      style={{ color: el.fillColor, fontSize: el.fontSize, fontWeight: el.fontWeight, fontFamily: el.fontFamily, textAlign: (el.textAlign as any) || "left", fontStyle: el.fontStyle || "normal", textDecoration: el.textDecoration || "none", lineHeight: el.lineHeight ? `${el.lineHeight}` : undefined, letterSpacing: el.letterSpacing ? `${el.letterSpacing}px` : undefined }}
+                    />
+                  ) : (
+                    <span className="select-none whitespace-pre-wrap block w-full" style={{ color: el.fillColor, fontSize: el.fontSize, fontWeight: el.fontWeight, fontFamily: el.fontFamily, textAlign: (el.textAlign as any) || "left", fontStyle: el.fontStyle || "normal", textDecoration: el.textDecoration || "none", lineHeight: el.lineHeight ? `${el.lineHeight}` : undefined, letterSpacing: el.letterSpacing ? `${el.letterSpacing}px` : undefined }}>{el.text || el.label}</span>
+                  )
+                ) : (
+                  <svg width={["Line", "Arrow"].includes(el.type) ? Math.abs(el.w) + 20 : el.w} height={["Line", "Arrow"].includes(el.type) ? Math.abs(el.h) + 20 : el.h} className="overflow-visible">
+                    {renderShape(el)}
+                  </svg>
+                )}
+                {selectedId === el.id && !el.locked && !["Line", "Arrow", "Pen", "Pencil", "Brush"].includes(el.type) && (
+                  <>
+                    <div className="absolute inset-0 border-2 border-primary pointer-events-none" />
+                    {resizeHandles.map(h => (
+                      <div key={h} style={getHandleStyle(h)}
+                        onMouseDown={e => { e.stopPropagation(); const pos = getCanvasPos(e); pushHistory(); setResizing({ id: el.id, handle: h, startX: pos.x, startY: pos.y, startW: el.w, startH: el.h, startElX: el.x, startElY: el.y }); }} />
+                    ))}
+                  </>
+                )}
+                {selectedId === el.id && (
+                  <div className="absolute -bottom-5 left-0 text-[9px] text-primary font-medium whitespace-nowrap">{Math.round(el.w)} × {Math.round(el.h)}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      </div>
+
+      {/* Right Panel */}
+      <AnimatePresence>
+        {rightPanelOpen && (
+          <motion.aside
+            initial={{ x: 60, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 60, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed right-0 top-24 bottom-0 glass-strong z-20 overflow-y-auto border-l border-border/30"
+            style={{ width: rightPanelWidth }}
+          >
+            <RightPanel
+              activeEl={activeEl}
+              selectedId={selectedId}
+              collapsedSections={collapsedSections}
+              toggleSection={toggleSection}
+              updateSelected={updateSelected}
+              handleAlign={handleAlign}
+              handleFlip={handleFlip}
+              handleDuplicate={handleDuplicate}
+              handleDelete={handleDelete}
+            />
+          </motion.aside>
+        )}
+      </AnimatePresence>
+
+      {/* Export Modal */}
+      <AnimatePresence>
+        {showExportModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm"
+            onClick={() => setShowExportModal(false)}>
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              className="glass-strong rounded-2xl p-6 w-[420px] max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-foreground">Export Project</h2>
+                <button onClick={() => setShowExportModal(false)} className="p-1 rounded hover:bg-secondary/60 text-muted-foreground"><X className="w-4 h-4" /></button>
+              </div>
+              <p className="text-xs text-muted-foreground mb-4">Export your design to different code formats</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { format: "html", label: "HTML/CSS", desc: "Static HTML with inline styles", icon: "🌐" },
+                  { format: "react", label: "React (JSX)", desc: "React component with inline styles", icon: "⚛️" },
+                  { format: "vue", label: "Vue.js", desc: "Vue SFC with scoped styles", icon: "💚" },
+                  { format: "tailwind", label: "React + Tailwind", desc: "React with Tailwind CSS classes", icon: "🎨" },
+                  { format: "svg", label: "SVG", desc: "Scalable Vector Graphics", icon: "📐" },
+                  { format: "json", label: "JSON Data", desc: "Raw element data for processing", icon: "📦" },
+                ].map(item => (
+                  <button key={item.format} onClick={() => downloadExport(item.format)}
+                    className="flex flex-col items-start gap-1 p-3 rounded-xl bg-secondary/30 hover:bg-secondary/60 border border-border/30 hover:border-primary/30 transition-all text-left group">
+                    <div className="flex items-center gap-2 w-full">
+                      <span className="text-lg">{item.icon}</span>
+                      <span className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">{item.label}</span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">{item.desc}</p>
+                  </button>
+                ))}
+              </div>
+              <div className="mt-4 p-3 rounded-lg bg-primary/5 border border-primary/10">
+                <p className="text-[10px] text-muted-foreground">
+                  <Sparkles className="w-3 h-3 inline text-primary mr-1" />
+                  {elements.length} elements will be exported
+                </p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+export default WorkspaceCanvas;
