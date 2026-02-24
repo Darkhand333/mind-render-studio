@@ -1,5 +1,5 @@
 import GlassNavbar from "../components/GlassNavbar";
-import WorkspaceCanvas from "../components/WorkspaceCanvas";
+import WorkspaceCanvas from "../components/workspace/WorkspaceCanvas";
 
 const Workspace = () => {
   return (
