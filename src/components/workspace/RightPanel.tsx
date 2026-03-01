@@ -1,9 +1,10 @@
+import { useEffect, useState } from "react";
 import {
   Square, RotateCcw, CornerUpRight, FlipHorizontal, FlipVertical,
   AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignCenterVertical,
   AlignEndVertical, LayoutGrid, Droplet, Blend, SunDim, Ruler, Maximize2,
   Lock, Unlock, Eye, EyeOff, Copy, Trash2, MousePointer, ChevronRight,
-  ChevronDown, Bold, Italic, Underline, AlignJustify
+  ChevronDown, Bold, Italic, Underline, AlignJustify, Palette
 } from "lucide-react";
 import { CanvasElement, presetColors, fontFamilies, blendModes, strokeDashOptions } from "./types";
 
@@ -150,8 +151,42 @@ const RightPanel = ({ activeEl, selectedId, collapsedSections, toggleSection, up
         </div>
       )}
 
-      {/* Appearance */}
-      <SectionHeader label="Appearance" collapsed={!!collapsedSections["Appearance"]} onToggle={() => toggleSection("Appearance")} />
+      {/* UI Theme */}
+      <SectionHeader label="UI Theme" collapsed={!!collapsedSections["UI Theme"]} onToggle={() => toggleSection("UI Theme")} />
+      {!collapsedSections["UI Theme"] && (
+        <div className="px-1 space-y-1.5">
+          <p className="text-[9px] text-muted-foreground px-1">Changes the workspace UI appearance</p>
+          <div className="grid grid-cols-2 gap-1">
+            {[
+              { id: "default", label: "Purple Neon", primary: "263 70% 58%", bg: "240 15% 5%", accent: "330 80% 60%" },
+              { id: "ocean", label: "Ocean Blue", primary: "210 90% 55%", bg: "220 20% 6%", accent: "180 70% 50%" },
+              { id: "emerald", label: "Emerald", primary: "155 70% 45%", bg: "160 15% 5%", accent: "120 60% 50%" },
+              { id: "sunset", label: "Sunset", primary: "25 90% 55%", bg: "15 20% 6%", accent: "350 80% 55%" },
+              { id: "rose", label: "Rose Gold", primary: "340 75% 60%", bg: "340 10% 6%", accent: "20 70% 60%" },
+              { id: "mono", label: "Monochrome", primary: "0 0% 70%", bg: "0 0% 5%", accent: "0 0% 50%" },
+            ].map(theme => (
+              <button key={theme.id} onClick={() => {
+                document.documentElement.style.setProperty("--primary", theme.primary);
+                document.documentElement.style.setProperty("--background", theme.bg);
+                document.documentElement.style.setProperty("--accent", theme.accent);
+                document.documentElement.style.setProperty("--neon-purple", theme.primary);
+                document.documentElement.style.setProperty("--ring", theme.primary);
+                document.documentElement.style.setProperty("--sidebar-primary", theme.primary);
+                document.documentElement.style.setProperty("--sidebar-ring", theme.primary);
+                document.documentElement.style.setProperty("--border", theme.primary.split(" ")[0] + " 30% 20%");
+                document.documentElement.style.setProperty("--surface-glow", theme.primary);
+              }}
+                className="flex items-center gap-1.5 p-1.5 rounded-lg bg-secondary/30 hover:bg-secondary/60 border border-border/30 hover:border-primary/30 transition-all text-left">
+                <div className="w-4 h-4 rounded-full shrink-0" style={{ background: `linear-gradient(135deg, hsl(${theme.primary}), hsl(${theme.accent}))` }} />
+                <span className="text-[10px] text-foreground">{theme.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Appearance (Element) */}
+      <SectionHeader label="Fill & Opacity" collapsed={!!collapsedSections["Appearance"]} onToggle={() => toggleSection("Appearance")} />
       {!collapsedSections["Appearance"] && (
         <div className="px-1 space-y-1.5">
           <div className="flex items-center gap-1.5">
