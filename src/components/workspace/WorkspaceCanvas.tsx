@@ -6,7 +6,7 @@ import {
   Undo, Redo, Grid3X3, Download, PanelLeft, PanelRight, Pen, Pencil,
   Paintbrush, Minus, ArrowUpRight, Box, Slice, Navigation, Scale,
   FileText, File, Search, Package, Component, Home, X, Sparkles,
-  Eye, EyeOff, Lock, Unlock, ChevronRight, ChevronDown
+  Eye, EyeOff, Lock, Unlock, ChevronRight, ChevronDown, Keyboard, Info
 } from "lucide-react";
 import ComponentExplainer from "../ComponentExplainer";
 import HomeSidebar from "./HomeSidebar";
@@ -48,6 +48,7 @@ const WorkspaceCanvas = () => {
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [pages, setPages] = useState([{ id: 1, name: "Page 1", active: true }]);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -424,6 +425,7 @@ const WorkspaceCanvas = () => {
         <button onClick={handleRedo} title="Redo (Ctrl+Y)" className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60"><Redo className="w-4 h-4" /></button>
         <button onClick={() => setShowGrid(!showGrid)} title="Toggle Grid" className={`p-1.5 rounded transition-colors ${showGrid ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"}`}><Grid3X3 className="w-4 h-4" /></button>
         <button onClick={() => setShowExportModal(true)} title="Export" className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60"><Download className="w-4 h-4" /></button>
+        <button onClick={() => setShowShortcuts(true)} title="Keyboard Shortcuts" className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60"><Keyboard className="w-4 h-4" /></button>
         <button onClick={() => setRightPanelOpen(!rightPanelOpen)} className="p-1.5 rounded hover:bg-primary/10 text-muted-foreground hover:text-foreground transition-colors" title="Toggle right panel">
           <PanelRight className="w-4 h-4" />
         </button>
@@ -629,9 +631,9 @@ const WorkspaceCanvas = () => {
                   mixBlendMode: (el.blendMode?.toLowerCase().replace(" ", "-") || "normal") as any,
                   filter: el.blurAmount ? `blur(${el.blurAmount}px)` : undefined,
                 }}
-                onClick={e => { e.stopPropagation(); if (activeTool === "Select") setSelectedId(el.id === selectedId ? null : el.id); }}
+                onClick={e => { e.stopPropagation(); setSelectedId(el.id === selectedId ? null : el.id); }}
                 onMouseDown={e => {
-                  if (activeTool !== "Select" || el.locked) return;
+                  if (el.locked) return;
                   e.stopPropagation();
                   const pos = getCanvasPos(e);
                   setDragging({ id: el.id, offsetX: pos.x - el.x, offsetY: pos.y - el.y });
@@ -734,6 +736,54 @@ const WorkspaceCanvas = () => {
                   <Sparkles className="w-3 h-3 inline text-primary mr-1" />
                   {elements.length} elements will be exported
                 </p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Shortcuts Modal */}
+      <AnimatePresence>
+        {showShortcuts && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm"
+            onClick={() => setShowShortcuts(false)}>
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              className="glass-strong rounded-2xl p-6 w-[480px] max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2"><Keyboard className="w-5 h-5 text-primary" /> Keyboard Shortcuts (Windows)</h2>
+                <button onClick={() => setShowShortcuts(false)} className="p-1 rounded hover:bg-secondary/60 text-muted-foreground"><X className="w-4 h-4" /></button>
+              </div>
+              <div className="space-y-4">
+                {[
+                  { category: "Tools", shortcuts: [
+                    { keys: "V", desc: "Select tool" }, { keys: "H", desc: "Pan / Hand tool" }, { keys: "R", desc: "Rectangle" },
+                    { keys: "O", desc: "Ellipse" }, { keys: "T", desc: "Triangle" }, { keys: "L", desc: "Line" },
+                    { keys: "A", desc: "Arrow" }, { keys: "P", desc: "Pen tool" }, { keys: "X", desc: "Text" },
+                    { keys: "F", desc: "Frame" }, { keys: "K", desc: "Scale" }, { keys: "B", desc: "Pencil" },
+                  ]},
+                  { category: "Actions", shortcuts: [
+                    { keys: "Ctrl + Z", desc: "Undo" }, { keys: "Ctrl + Y", desc: "Redo" },
+                    { keys: "Ctrl + D", desc: "Duplicate" }, { keys: "Delete", desc: "Delete element" },
+                    { keys: "Ctrl + K", desc: "Command palette" }, { keys: "Escape", desc: "Deselect / Select tool" },
+                  ]},
+                  { category: "View", shortcuts: [
+                    { keys: "Ctrl + +", desc: "Zoom in" }, { keys: "Ctrl + -", desc: "Zoom out" },
+                    { keys: "Ctrl + 0", desc: "Zoom to 100%" }, { keys: "G", desc: "Toggle grid" },
+                  ]},
+                ].map(group => (
+                  <div key={group.category}>
+                    <h3 className="text-xs font-semibold text-primary uppercase tracking-wider mb-2">{group.category}</h3>
+                    <div className="grid grid-cols-2 gap-1">
+                      {group.shortcuts.map(s => (
+                        <div key={s.desc} className="flex items-center justify-between px-2 py-1.5 rounded bg-secondary/30">
+                          <span className="text-[11px] text-muted-foreground">{s.desc}</span>
+                          <kbd className="px-1.5 py-0.5 rounded bg-background/60 text-[10px] font-mono text-foreground">{s.keys}</kbd>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </motion.div>
           </motion.div>
