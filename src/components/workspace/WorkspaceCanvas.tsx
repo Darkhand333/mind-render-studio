@@ -6,7 +6,8 @@ import {
   Undo, Redo, Grid3X3, Download, PanelLeft, PanelRight, Pen, Pencil,
   Paintbrush, Minus, ArrowUpRight, Box, Slice, Navigation, Scale,
   FileText, File, Search, Package, Component, Home, X, Sparkles,
-  Eye, EyeOff, Lock, Unlock, ChevronRight, ChevronDown, Keyboard, Info
+  Eye, EyeOff, Lock, Unlock, ChevronRight, ChevronDown, Keyboard, Info,
+  Play, Link, Unlink, Ruler as RulerIcon
 } from "lucide-react";
 import ComponentExplainer from "../ComponentExplainer";
 import HomeSidebar from "./HomeSidebar";
@@ -21,9 +22,17 @@ const iconMap: Record<string, any> = {
 const allTools = toolGroups.flatMap(g => g.tools);
 let nextId = 1;
 
+// Snap guide types
+type SnapGuide = { axis: "x" | "y"; position: number; type: "edge" | "center" };
+type PrototypeLink = { fromId: number; toId: number; trigger: "click" | "hover"; animation: "instant" | "slide" | "fade" };
+
+const SNAP_THRESHOLD = 6;
+const RULER_SIZE = 20;
+
 const WorkspaceCanvas = () => {
   const [activeTool, setActiveTool] = useState("Select");
   const [showGrid, setShowGrid] = useState(true);
+  const [showRulers, setShowRulers] = useState(true);
   const [zoom, setZoom] = useState(100);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [panning, setPanning] = useState(false);
@@ -38,6 +47,7 @@ const WorkspaceCanvas = () => {
   const [history, setHistory] = useState<CanvasElement[][]>([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [dragging, setDragging] = useState<{ id: number; offsetX: number; offsetY: number } | null>(null);
+  const [didDrag, setDidDrag] = useState(false);
   const [resizing, setResizing] = useState<{ id: number; handle: string; startX: number; startY: number; startW: number; startH: number; startElX: number; startElY: number } | null>(null);
   const [editingTextId, setEditingTextId] = useState<number | null>(null);
   const [leftSidebarView, setLeftSidebarView] = useState<"home" | "workspace">("workspace");
@@ -49,6 +59,15 @@ const WorkspaceCanvas = () => {
   const [pages, setPages] = useState([{ id: 1, name: "Page 1", active: true }]);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  // Snap guides
+  const [activeSnapGuides, setActiveSnapGuides] = useState<SnapGuide[]>([]);
+  // Prototyping
+  const [prototypeMode, setPrototypeMode] = useState(false);
+  const [prototypeLinks, setPrototypeLinks] = useState<PrototypeLink[]>([]);
+  const [linkingFrom, setLinkingFrom] = useState<number | null>(null);
+  const [previewMode, setPreviewMode] = useState(false);
+  const [previewCurrentFrame, setPreviewCurrentFrame] = useState<number | null>(null);
+  const [previewTransition, setPreviewTransition] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -70,11 +89,14 @@ const WorkspaceCanvas = () => {
       if ((e.metaKey || e.ctrlKey) && e.key === "z") { handleUndo(); e.preventDefault(); }
       if ((e.metaKey || e.ctrlKey) && e.key === "y") { handleRedo(); e.preventDefault(); }
       if ((e.metaKey || e.ctrlKey) && e.key === "d") { e.preventDefault(); handleDuplicate(); }
-      if (e.key === "Escape") { setSelectedId(null); setActiveTool("Select"); }
+      if (e.key === "Escape") {
+        if (previewMode) { setPreviewMode(false); setPreviewCurrentFrame(null); }
+        else { setSelectedId(null); setActiveTool("Select"); }
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selectedId, editingTextId, elements, historyIdx]);
+  }, [selectedId, editingTextId, elements, historyIdx, previewMode]);
 
   const pushHistory = useCallback(() => {
     setHistory(prev => { const h = prev.slice(0, historyIdx + 1); h.push(JSON.parse(JSON.stringify(elements))); return h; });
@@ -103,7 +125,41 @@ const WorkspaceCanvas = () => {
     return { x: (e.clientX - rect.left - panOffset.x) / (zoom / 100), y: (e.clientY - rect.top - panOffset.y) / (zoom / 100) };
   };
 
+  // Snap logic
+  const calculateSnaps = (movingId: number, x: number, y: number, w: number, h: number): { snappedX: number; snappedY: number; guides: SnapGuide[] } => {
+    const guides: SnapGuide[] = [];
+    let snappedX = x, snappedY = y;
+    const otherEls = elements.filter(el => el.id !== movingId && el.visible);
+    const movingEdges = { left: x, right: x + w, centerX: x + w / 2, top: y, bottom: y + h, centerY: y + h / 2 };
+
+    for (const el of otherEls) {
+      const edges = { left: el.x, right: el.x + el.w, centerX: el.x + el.w / 2, top: el.y, bottom: el.y + el.h, centerY: el.y + el.h / 2 };
+      // X snaps
+      for (const [mKey, mVal] of [["left", movingEdges.left], ["right", movingEdges.right], ["centerX", movingEdges.centerX]] as [string, number][]) {
+        for (const [eKey, eVal] of [["left", edges.left], ["right", edges.right], ["centerX", edges.centerX]] as [string, number][]) {
+          if (Math.abs(mVal - eVal) < SNAP_THRESHOLD) {
+            const offset = eVal - mVal;
+            snappedX = x + offset;
+            guides.push({ axis: "x", position: eVal, type: eKey === "centerX" ? "center" : "edge" });
+          }
+        }
+      }
+      // Y snaps
+      for (const [mKey, mVal] of [["top", movingEdges.top], ["bottom", movingEdges.bottom], ["centerY", movingEdges.centerY]] as [string, number][]) {
+        for (const [eKey, eVal] of [["top", edges.top], ["bottom", edges.bottom], ["centerY", edges.centerY]] as [string, number][]) {
+          if (Math.abs(mVal - eVal) < SNAP_THRESHOLD) {
+            const offset = eVal - mVal;
+            snappedY = y + offset;
+            guides.push({ axis: "y", position: eVal, type: eKey === "centerY" ? "center" : "edge" });
+          }
+        }
+      }
+    }
+    return { snappedX, snappedY, guides };
+  };
+
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
+    if (previewMode) return;
     if (activeTool === "Pan") { setPanning(true); setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y }); return; }
     if (e.target !== canvasRef.current && !isDrawingTool && !isPenTool) return;
     const pos = getCanvasPos(e);
@@ -135,15 +191,28 @@ const WorkspaceCanvas = () => {
       setSelectedId(newEl.id);
       setDrawing(false); setDrawStart(null); setDrawCurrent(null);
     }
-    if (dragging) setDragging(null);
+    if (dragging) {
+      setDragging(null);
+      setActiveSnapGuides([]);
+    }
+    // Reset drag tracking after a short delay so click handler can read it
+    setTimeout(() => setDidDrag(false), 0);
   };
 
   const handleCanvasMouseMove = (e: React.MouseEvent) => {
     if (panning) { setPanOffset({ x: e.clientX - panStart.x, y: e.clientY - panStart.y }); return; }
     if (drawing && drawStart) setDrawCurrent(getCanvasPos(e));
     if (dragging) {
+      setDidDrag(true);
       const pos = getCanvasPos(e);
-      setElements(prev => prev.map(el => el.id === dragging.id ? { ...el, x: pos.x - dragging.offsetX, y: pos.y - dragging.offsetY } : el));
+      const el = elements.find(el => el.id === dragging.id);
+      if (el) {
+        const rawX = pos.x - dragging.offsetX;
+        const rawY = pos.y - dragging.offsetY;
+        const { snappedX, snappedY, guides } = calculateSnaps(dragging.id, rawX, rawY, el.w, el.h);
+        setActiveSnapGuides(guides);
+        setElements(prev => prev.map(el => el.id === dragging.id ? { ...el, x: snappedX, y: snappedY } : el));
+      }
     }
     if (resizing) {
       const pos = getCanvasPos(e);
@@ -207,7 +276,6 @@ const WorkspaceCanvas = () => {
   };
 
   const handleNewProject = (width: number, height: number, name: string) => {
-    // Create a frame element representing the artboard
     pushHistory();
     const newFrame: CanvasElement = {
       id: nextId++, type: "Frame", x: 100, y: 100, w: width > 2000 ? width / 2 : width, h: height > 2000 ? height / 2 : height,
@@ -217,6 +285,39 @@ const WorkspaceCanvas = () => {
     setElements(prev => [...prev, newFrame]);
     setSelectedId(newFrame.id);
     setLeftSidebarView("workspace");
+  };
+
+  // Prototype link management
+  const addPrototypeLink = (fromId: number, toId: number) => {
+    setPrototypeLinks(prev => {
+      const existing = prev.find(l => l.fromId === fromId);
+      if (existing) return prev.map(l => l.fromId === fromId ? { ...l, toId } : l);
+      return [...prev, { fromId, toId, trigger: "click", animation: "slide" }];
+    });
+    setLinkingFrom(null);
+  };
+
+  const removePrototypeLink = (fromId: number) => {
+    setPrototypeLinks(prev => prev.filter(l => l.fromId !== fromId));
+  };
+
+  const startPreview = () => {
+    const frames = elements.filter(el => el.type === "Frame");
+    if (frames.length > 0) {
+      setPreviewCurrentFrame(frames[0].id);
+      setPreviewMode(true);
+    }
+  };
+
+  const handlePreviewClick = (elId: number) => {
+    const link = prototypeLinks.find(l => l.fromId === elId);
+    if (link) {
+      setPreviewTransition(link.animation);
+      setTimeout(() => {
+        setPreviewCurrentFrame(link.toId);
+        setPreviewTransition(null);
+      }, link.animation === "instant" ? 0 : 300);
+    }
   };
 
   const toggleSection = (label: string) => setCollapsedSections(p => ({ ...p, [label]: !p[label] }));
@@ -387,6 +488,60 @@ const WorkspaceCanvas = () => {
     }
   };
 
+  // Ruler rendering
+  const renderRuler = (axis: "x" | "y") => {
+    const canvasRect = canvasRef.current?.getBoundingClientRect();
+    const totalSize = axis === "x" ? (canvasRect?.width || 1200) : (canvasRect?.height || 800);
+    const step = zoom >= 100 ? 50 : zoom >= 50 ? 100 : 200;
+    const ticks: JSX.Element[] = [];
+    const scaleFactor = zoom / 100;
+
+    for (let i = -2000; i < 4000; i += step) {
+      const screenPos = axis === "x"
+        ? i * scaleFactor + panOffset.x
+        : i * scaleFactor + panOffset.y;
+      
+      if (screenPos < -10 || screenPos > totalSize + 10) continue;
+
+      if (axis === "x") {
+        ticks.push(
+          <g key={i}>
+            <line x1={screenPos} y1={RULER_SIZE - 6} x2={screenPos} y2={RULER_SIZE} stroke="hsl(var(--muted-foreground))" strokeWidth={0.5} />
+            <text x={screenPos + 2} y={RULER_SIZE - 8} fill="hsl(var(--muted-foreground))" fontSize={8} fontFamily="monospace">{i}</text>
+          </g>
+        );
+      } else {
+        ticks.push(
+          <g key={i}>
+            <line x1={RULER_SIZE - 6} y1={screenPos} x2={RULER_SIZE} y2={screenPos} stroke="hsl(var(--muted-foreground))" strokeWidth={0.5} />
+            <text x={2} y={screenPos + 3} fill="hsl(var(--muted-foreground))" fontSize={8} fontFamily="monospace" transform={`rotate(-90, 2, ${screenPos + 3})`}>{i}</text>
+          </g>
+        );
+      }
+    }
+    return ticks;
+  };
+
+  // Prototype link arrows
+  const renderPrototypeLinks = () => {
+    if (!prototypeMode) return null;
+    return prototypeLinks.map(link => {
+      const from = elements.find(el => el.id === link.fromId);
+      const to = elements.find(el => el.id === link.toId);
+      if (!from || !to) return null;
+      const fx = from.x + from.w, fy = from.y + from.h / 2;
+      const tx = to.x, ty = to.y + to.h / 2;
+      return (
+        <g key={`${link.fromId}-${link.toId}`}>
+          <line x1={fx} y1={fy} x2={tx} y2={ty} stroke="hsl(45, 90%, 55%)" strokeWidth={2} strokeDasharray="6 3" />
+          <circle cx={fx} cy={fy} r={4} fill="hsl(45, 90%, 55%)" />
+          <circle cx={tx} cy={ty} r={4} fill="hsl(45, 90%, 55%)" stroke="hsl(var(--background))" strokeWidth={2} />
+          <text x={(fx + tx) / 2} y={(fy + ty) / 2 - 8} fill="hsl(45, 90%, 55%)" fontSize={10} textAnchor="middle" fontFamily="Inter">{link.trigger} → {link.animation}</text>
+        </g>
+      );
+    });
+  };
+
   return (
     <div className="relative min-h-screen pt-14 flex" onMouseUp={() => { if (resizing) setResizing(null); }}>
       {/* Top toolbar */}
@@ -414,6 +569,17 @@ const WorkspaceCanvas = () => {
 
         <div className="flex-1" />
 
+        {/* Prototype toggle */}
+        <button onClick={() => { setPrototypeMode(!prototypeMode); setLinkingFrom(null); }}
+          title="Prototype Mode"
+          className={`p-1.5 rounded transition-colors ${prototypeMode ? "bg-yellow-500/20 text-yellow-400" : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"}`}>
+          <Link className="w-4 h-4" />
+        </button>
+        <button onClick={startPreview} title="Preview Prototype" className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60">
+          <Play className="w-4 h-4" />
+        </button>
+        <div className="w-px h-5 bg-border/50 mx-1" />
+
         <div className="flex items-center gap-1 bg-secondary/50 rounded px-2 py-1">
           <button onClick={() => setZoom(z => Math.max(z - 10, 25))} className="text-muted-foreground hover:text-foreground"><ZoomOut className="w-3.5 h-3.5" /></button>
           <span className="text-xs text-foreground font-medium w-10 text-center">{zoom}%</span>
@@ -424,6 +590,7 @@ const WorkspaceCanvas = () => {
         <button onClick={handleUndo} title="Undo (Ctrl+Z)" className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60"><Undo className="w-4 h-4" /></button>
         <button onClick={handleRedo} title="Redo (Ctrl+Y)" className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60"><Redo className="w-4 h-4" /></button>
         <button onClick={() => setShowGrid(!showGrid)} title="Toggle Grid" className={`p-1.5 rounded transition-colors ${showGrid ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"}`}><Grid3X3 className="w-4 h-4" /></button>
+        <button onClick={() => setShowRulers(!showRulers)} title="Toggle Rulers" className={`p-1.5 rounded transition-colors ${showRulers ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"}`}><RulerIcon className="w-4 h-4" /></button>
         <button onClick={() => setShowExportModal(true)} title="Export" className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60"><Download className="w-4 h-4" /></button>
         <button onClick={() => setShowShortcuts(true)} title="Keyboard Shortcuts" className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60"><Keyboard className="w-4 h-4" /></button>
         <button onClick={() => setRightPanelOpen(!rightPanelOpen)} className="p-1.5 rounded hover:bg-primary/10 text-muted-foreground hover:text-foreground transition-colors" title="Toggle right panel">
@@ -469,6 +636,30 @@ const WorkspaceCanvas = () => {
                   <span>Home / Projects</span>
                 </button>
 
+                {/* Prototype links panel (when in prototype mode) */}
+                {prototypeMode && leftTab === "layers" && (
+                  <div className="px-2 py-1.5 bg-yellow-500/5 border-b border-yellow-500/20">
+                    <p className="text-[10px] font-semibold text-yellow-400 uppercase tracking-wider mb-1">🔗 Prototype Mode</p>
+                    <p className="text-[9px] text-muted-foreground">Click an element, then click another to link them. Links define click-through navigation.</p>
+                    {prototypeLinks.length > 0 && (
+                      <div className="mt-1.5 space-y-0.5">
+                        {prototypeLinks.map(link => {
+                          const from = elements.find(el => el.id === link.fromId);
+                          const to = elements.find(el => el.id === link.toId);
+                          return (
+                            <div key={link.fromId} className="flex items-center gap-1 text-[9px] text-yellow-300 bg-yellow-500/10 rounded px-1.5 py-0.5">
+                              <span className="truncate">{from?.label}</span>
+                              <ArrowUpRight className="w-2.5 h-2.5 shrink-0" />
+                              <span className="truncate">{to?.label}</span>
+                              <button onClick={() => removePrototypeLink(link.fromId)} className="ml-auto shrink-0 hover:text-destructive"><X className="w-2.5 h-2.5" /></button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Tab content */}
                 <div className="flex-1 overflow-y-auto">
                   {leftTab === "pages" && (
@@ -508,6 +699,7 @@ const WorkspaceCanvas = () => {
                             onClick={() => setSelectedId(el.id)}>
                             <div className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: el.fillColor + "66", border: `1px solid ${el.fillColor}` }} />
                             <span className="truncate flex-1">{el.label}</span>
+                            {prototypeLinks.some(l => l.fromId === el.id) && <Link className="w-3 h-3 text-yellow-400 shrink-0" />}
                             <button onClick={ev => { ev.stopPropagation(); setElements(p => p.map(x => x.id === el.id ? { ...x, visible: !x.visible } : x)); }} className="p-0.5 hover:text-foreground shrink-0">
                               {el.visible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
                             </button>
@@ -585,94 +777,172 @@ const WorkspaceCanvas = () => {
         )}
       </AnimatePresence>
 
-      {/* Canvas */}
+      {/* Canvas area with rulers */}
       <div className="flex-1 pt-10" style={{ marginLeft: leftSidebarOpen ? leftSidebarWidth : 0, marginRight: rightPanelOpen ? rightPanelWidth : 0 }}>
-        <motion.div
-          ref={canvasRef} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-          className="relative w-full h-[calc(100vh-6rem)] overflow-hidden bg-[hsl(240,15%,4%)]"
-          style={{ cursor: isPenTool || isDrawingTool ? "crosshair" : activeTool === "Pan" ? (panning ? "grabbing" : "grab") : "default" }}
-          onMouseDown={handleCanvasMouseDown} onMouseUp={handleCanvasMouseUp} onMouseMove={handleCanvasMouseMove}
-          onDoubleClick={() => { if (isPenTool) finishPen(); }}
-        >
-          {showGrid && (
-            <div className="absolute inset-0 opacity-[0.04]" style={{
-              backgroundImage: `linear-gradient(hsl(var(--primary) / 0.5) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--primary) / 0.5) 1px, transparent 1px)`,
-              backgroundSize: "40px 40px", backgroundPosition: `${panOffset.x}px ${panOffset.y}px`,
-            }} />
+        <div className="relative w-full h-[calc(100vh-6rem)]">
+          {/* Horizontal ruler */}
+          {showRulers && (
+            <svg className="absolute top-0 left-0 w-full z-10" style={{ height: RULER_SIZE, marginLeft: RULER_SIZE }}>
+              <rect width="100%" height={RULER_SIZE} fill="hsl(var(--card))" opacity={0.95} />
+              <line x1={0} y1={RULER_SIZE} x2="100%" y2={RULER_SIZE} stroke="hsl(var(--border))" strokeWidth={0.5} />
+              {renderRuler("x")}
+            </svg>
+          )}
+          {/* Vertical ruler */}
+          {showRulers && (
+            <svg className="absolute top-0 left-0 h-full z-10" style={{ width: RULER_SIZE, marginTop: RULER_SIZE }}>
+              <rect width={RULER_SIZE} height="100%" fill="hsl(var(--card))" opacity={0.95} />
+              <line x1={RULER_SIZE} y1={0} x2={RULER_SIZE} y2="100%" stroke="hsl(var(--border))" strokeWidth={0.5} />
+              {renderRuler("y")}
+            </svg>
+          )}
+          {/* Ruler corner */}
+          {showRulers && (
+            <div className="absolute top-0 left-0 z-20 flex items-center justify-center" style={{ width: RULER_SIZE, height: RULER_SIZE, background: "hsl(var(--card))" }}>
+              <RulerIcon className="w-2.5 h-2.5 text-muted-foreground/40" />
+            </div>
           )}
 
-          <div className="absolute bottom-3 left-3 z-10 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/80 backdrop-blur-sm">
-            <Move className="w-3 h-3 text-primary" />
-            <span className="text-[10px] text-muted-foreground font-medium">{activeTool}</span>
-            <span className="text-[10px] text-primary font-bold ml-2">{zoom}%</span>
-            <span className="text-[10px] text-muted-foreground">· {elements.length} objects</span>
-          </div>
-
-          {renderShapePreview()}
-
-          <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 5 }}>
-            {penPoints.length > 0 && (
-              <polyline points={penPoints.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke="hsl(var(--primary))" strokeWidth={2} strokeDasharray="4 2" />
+          <motion.div
+            ref={canvasRef} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            className="absolute overflow-hidden bg-[hsl(240,15%,4%)]"
+            style={{
+              top: showRulers ? RULER_SIZE : 0,
+              left: showRulers ? RULER_SIZE : 0,
+              right: 0,
+              bottom: 0,
+              cursor: isPenTool || isDrawingTool ? "crosshair" : activeTool === "Pan" ? (panning ? "grabbing" : "grab") : "default",
+            }}
+            onMouseDown={handleCanvasMouseDown} onMouseUp={handleCanvasMouseUp} onMouseMove={handleCanvasMouseMove}
+            onDoubleClick={() => { if (isPenTool) finishPen(); }}
+          >
+            {showGrid && (
+              <div className="absolute inset-0 opacity-[0.04]" style={{
+                backgroundImage: `linear-gradient(hsl(var(--primary) / 0.5) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--primary) / 0.5) 1px, transparent 1px)`,
+                backgroundSize: "40px 40px", backgroundPosition: `${panOffset.x}px ${panOffset.y}px`,
+              }} />
             )}
-          </svg>
 
-          <div style={{ transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom / 100})`, transformOrigin: "0 0" }}>
-            {elements.filter(el => el.visible).map(el => (
-              <div
-                key={el.id}
-                className={`absolute ${el.locked ? "pointer-events-none opacity-60" : "cursor-move"}`}
-                style={{
-                  left: el.x, top: el.y,
-                  width: ["Line", "Arrow", "Pen", "Pencil", "Brush"].includes(el.type) ? undefined : el.w,
-                  height: ["Line", "Arrow", "Pen", "Pencil", "Brush"].includes(el.type) ? undefined : el.h,
-                  transform: `rotate(${el.rotation}deg) scaleX(${el.flipH ? -1 : 1}) scaleY(${el.flipV ? -1 : 1})`,
-                  transformOrigin: "center center",
-                  opacity: el.opacity / 100,
-                  mixBlendMode: (el.blendMode?.toLowerCase().replace(" ", "-") || "normal") as any,
-                  filter: el.blurAmount ? `blur(${el.blurAmount}px)` : undefined,
-                }}
-                onClick={e => { e.stopPropagation(); setSelectedId(el.id === selectedId ? null : el.id); }}
-                onMouseDown={e => {
-                  if (el.locked) return;
-                  e.stopPropagation();
-                  const pos = getCanvasPos(e);
-                  setDragging({ id: el.id, offsetX: pos.x - el.x, offsetY: pos.y - el.y });
-                  setSelectedId(el.id);
-                }}
-                onDoubleClick={e => { e.stopPropagation(); if (el.type === "Text") setEditingTextId(el.id); }}
-              >
-                {el.type === "Text" ? (
-                  editingTextId === el.id ? (
-                    <textarea autoFocus value={el.text || ""}
-                      onChange={ev => setElements(prev => prev.map(x => x.id === el.id ? { ...x, text: ev.target.value } : x))}
-                      onBlur={() => setEditingTextId(null)}
-                      className="bg-transparent border border-primary text-foreground outline-none w-full h-full resize-none p-1"
-                      style={{ color: el.fillColor, fontSize: el.fontSize, fontWeight: el.fontWeight, fontFamily: el.fontFamily, textAlign: (el.textAlign as any) || "left", fontStyle: el.fontStyle || "normal", textDecoration: el.textDecoration || "none", lineHeight: el.lineHeight ? `${el.lineHeight}` : undefined, letterSpacing: el.letterSpacing ? `${el.letterSpacing}px` : undefined }}
-                    />
+            <div className="absolute bottom-3 left-3 z-10 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/80 backdrop-blur-sm">
+              <Move className="w-3 h-3 text-primary" />
+              <span className="text-[10px] text-muted-foreground font-medium">{prototypeMode ? "Prototype" : activeTool}</span>
+              <span className="text-[10px] text-primary font-bold ml-2">{zoom}%</span>
+              <span className="text-[10px] text-muted-foreground">· {elements.length} objects</span>
+              {prototypeMode && <span className="text-[10px] text-yellow-400">· {prototypeLinks.length} links</span>}
+            </div>
+
+            {renderShapePreview()}
+
+            {/* Snap guides */}
+            <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 15 }}>
+              {activeSnapGuides.map((guide, i) => {
+                const scaleFactor = zoom / 100;
+                if (guide.axis === "x") {
+                  const x = guide.position * scaleFactor + panOffset.x;
+                  return <line key={i} x1={x} y1={0} x2={x} y2="100%" stroke="hsl(330, 80%, 60%)" strokeWidth={1} strokeDasharray={guide.type === "center" ? "4 4" : "2 2"} />;
+                } else {
+                  const y = guide.position * scaleFactor + panOffset.y;
+                  return <line key={i} x1={0} y1={y} x2="100%" y2={y} stroke="hsl(330, 80%, 60%)" strokeWidth={1} strokeDasharray={guide.type === "center" ? "4 4" : "2 2"} />;
+                }
+              })}
+            </svg>
+
+            <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 5 }}>
+              {penPoints.length > 0 && (
+                <polyline points={penPoints.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke="hsl(var(--primary))" strokeWidth={2} strokeDasharray="4 2" />
+              )}
+            </svg>
+
+            <div style={{ transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom / 100})`, transformOrigin: "0 0" }}>
+              {/* Prototype link arrows */}
+              <svg className="absolute pointer-events-none" style={{ zIndex: 6, overflow: "visible", width: 1, height: 1 }}>
+                {renderPrototypeLinks()}
+              </svg>
+
+              {elements.filter(el => el.visible).map(el => (
+                <div
+                  key={el.id}
+                  className={`absolute ${el.locked ? "pointer-events-none opacity-60" : "cursor-move"}`}
+                  style={{
+                    left: el.x, top: el.y,
+                    width: ["Line", "Arrow", "Pen", "Pencil", "Brush"].includes(el.type) ? undefined : el.w,
+                    height: ["Line", "Arrow", "Pen", "Pencil", "Brush"].includes(el.type) ? undefined : el.h,
+                    transform: `rotate(${el.rotation}deg) scaleX(${el.flipH ? -1 : 1}) scaleY(${el.flipV ? -1 : 1})`,
+                    transformOrigin: "center center",
+                    opacity: el.opacity / 100,
+                    mixBlendMode: (el.blendMode?.toLowerCase().replace(" ", "-") || "normal") as any,
+                    filter: el.blurAmount ? `blur(${el.blurAmount}px)` : undefined,
+                  }}
+                  onClick={e => {
+                    e.stopPropagation();
+                    // In prototype mode, handle linking
+                    if (prototypeMode) {
+                      if (linkingFrom === null) {
+                        setLinkingFrom(el.id);
+                      } else if (linkingFrom !== el.id) {
+                        addPrototypeLink(linkingFrom, el.id);
+                      } else {
+                        setLinkingFrom(null);
+                      }
+                      return;
+                    }
+                    // FIX: Don't toggle off if we just dragged
+                    if (didDrag) return;
+                    setSelectedId(el.id);
+                  }}
+                  onMouseDown={e => {
+                    if (el.locked || prototypeMode) return;
+                    e.stopPropagation();
+                    const pos = getCanvasPos(e);
+                    setDragging({ id: el.id, offsetX: pos.x - el.x, offsetY: pos.y - el.y });
+                    setDidDrag(false);
+                    setSelectedId(el.id);
+                  }}
+                  onDoubleClick={e => { e.stopPropagation(); if (el.type === "Text") setEditingTextId(el.id); }}
+                >
+                  {el.type === "Text" ? (
+                    editingTextId === el.id ? (
+                      <textarea autoFocus value={el.text || ""}
+                        onChange={ev => setElements(prev => prev.map(x => x.id === el.id ? { ...x, text: ev.target.value } : x))}
+                        onBlur={() => setEditingTextId(null)}
+                        className="bg-transparent border border-primary text-foreground outline-none w-full h-full resize-none p-1"
+                        style={{ color: el.fillColor, fontSize: el.fontSize, fontWeight: el.fontWeight, fontFamily: el.fontFamily, textAlign: (el.textAlign as any) || "left", fontStyle: el.fontStyle || "normal", textDecoration: el.textDecoration || "none", lineHeight: el.lineHeight ? `${el.lineHeight}` : undefined, letterSpacing: el.letterSpacing ? `${el.letterSpacing}px` : undefined }}
+                      />
+                    ) : (
+                      <span className="select-none whitespace-pre-wrap block w-full" style={{ color: el.fillColor, fontSize: el.fontSize, fontWeight: el.fontWeight, fontFamily: el.fontFamily, textAlign: (el.textAlign as any) || "left", fontStyle: el.fontStyle || "normal", textDecoration: el.textDecoration || "none", lineHeight: el.lineHeight ? `${el.lineHeight}` : undefined, letterSpacing: el.letterSpacing ? `${el.letterSpacing}px` : undefined }}>{el.text || el.label}</span>
+                    )
                   ) : (
-                    <span className="select-none whitespace-pre-wrap block w-full" style={{ color: el.fillColor, fontSize: el.fontSize, fontWeight: el.fontWeight, fontFamily: el.fontFamily, textAlign: (el.textAlign as any) || "left", fontStyle: el.fontStyle || "normal", textDecoration: el.textDecoration || "none", lineHeight: el.lineHeight ? `${el.lineHeight}` : undefined, letterSpacing: el.letterSpacing ? `${el.letterSpacing}px` : undefined }}>{el.text || el.label}</span>
-                  )
-                ) : (
-                  <svg width={["Line", "Arrow"].includes(el.type) ? Math.abs(el.w) + 20 : el.w} height={["Line", "Arrow"].includes(el.type) ? Math.abs(el.h) + 20 : el.h} className="overflow-visible">
-                    {renderShape(el)}
-                  </svg>
-                )}
-                {selectedId === el.id && !el.locked && !["Line", "Arrow", "Pen", "Pencil", "Brush"].includes(el.type) && (
-                  <>
-                    <div className="absolute inset-0 border-2 border-primary pointer-events-none" />
-                    {resizeHandles.map(h => (
-                      <div key={h} style={getHandleStyle(h)}
-                        onMouseDown={e => { e.stopPropagation(); const pos = getCanvasPos(e); pushHistory(); setResizing({ id: el.id, handle: h, startX: pos.x, startY: pos.y, startW: el.w, startH: el.h, startElX: el.x, startElY: el.y }); }} />
-                    ))}
-                  </>
-                )}
-                {selectedId === el.id && (
-                  <div className="absolute -bottom-5 left-0 text-[9px] text-primary font-medium whitespace-nowrap">{Math.round(el.w)} × {Math.round(el.h)}</div>
-                )}
-              </div>
-            ))}
-          </div>
-        </motion.div>
+                    <svg width={["Line", "Arrow"].includes(el.type) ? Math.abs(el.w) + 20 : el.w} height={["Line", "Arrow"].includes(el.type) ? Math.abs(el.h) + 20 : el.h} className="overflow-visible">
+                      {renderShape(el)}
+                    </svg>
+                  )}
+                  {/* Selection border + resize handles */}
+                  {selectedId === el.id && !el.locked && !["Line", "Arrow", "Pen", "Pencil", "Brush"].includes(el.type) && (
+                    <>
+                      <div className="absolute inset-0 border-2 border-primary pointer-events-none" />
+                      {resizeHandles.map(h => (
+                        <div key={h} style={getHandleStyle(h)}
+                          onMouseDown={e => { e.stopPropagation(); const pos = getCanvasPos(e); pushHistory(); setResizing({ id: el.id, handle: h, startX: pos.x, startY: pos.y, startW: el.w, startH: el.h, startElX: el.x, startElY: el.y }); }} />
+                      ))}
+                    </>
+                  )}
+                  {selectedId === el.id && (
+                    <div className="absolute -bottom-5 left-0 text-[9px] text-primary font-medium whitespace-nowrap">{Math.round(el.w)} × {Math.round(el.h)}</div>
+                  )}
+                  {/* Prototype linking indicator */}
+                  {prototypeMode && linkingFrom === el.id && (
+                    <div className="absolute inset-0 border-2 border-yellow-400 rounded pointer-events-none animate-pulse" />
+                  )}
+                  {prototypeMode && prototypeLinks.some(l => l.fromId === el.id) && (
+                    <div className="absolute -top-3 -right-3 w-5 h-5 rounded-full bg-yellow-500 flex items-center justify-center z-20">
+                      <Link className="w-3 h-3 text-background" />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        </div>
       </div>
 
       {/* Right Panel */}
@@ -696,6 +966,83 @@ const WorkspaceCanvas = () => {
               handleDelete={handleDelete}
             />
           </motion.aside>
+        )}
+      </AnimatePresence>
+
+      {/* Prototype Preview Overlay */}
+      <AnimatePresence>
+        {previewMode && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-background flex flex-col">
+            <div className="h-12 glass-strong border-b border-border/30 flex items-center justify-between px-4">
+              <div className="flex items-center gap-2">
+                <Play className="w-4 h-4 text-primary" />
+                <span className="text-sm font-semibold text-foreground">Prototype Preview</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {previewCurrentFrame && (
+                  <span className="text-xs text-muted-foreground">
+                    {elements.find(el => el.id === previewCurrentFrame)?.label || "Frame"}
+                  </span>
+                )}
+                <button onClick={() => { setPreviewMode(false); setPreviewCurrentFrame(null); }}
+                  className="px-3 py-1 rounded-lg text-xs font-medium bg-secondary/60 text-foreground hover:bg-secondary transition-colors">
+                  Exit Preview (Esc)
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 flex items-center justify-center overflow-hidden">
+              {previewCurrentFrame && (() => {
+                const frame = elements.find(el => el.id === previewCurrentFrame);
+                if (!frame) return <p className="text-muted-foreground">No frame found</p>;
+                // Find elements inside this frame
+                const childEls = elements.filter(el =>
+                  el.id !== frame.id && el.visible &&
+                  el.x >= frame.x && el.y >= frame.y &&
+                  el.x + el.w <= frame.x + frame.w && el.y + el.h <= frame.y + frame.h
+                );
+                return (
+                  <motion.div
+                    key={previewCurrentFrame}
+                    initial={previewTransition === "slide" ? { x: 100, opacity: 0 } : previewTransition === "fade" ? { opacity: 0 } : {}}
+                    animate={{ x: 0, opacity: 1 }}
+                    transition={{ duration: 0.3 }}
+                    className="relative border border-border/30 rounded-lg overflow-hidden"
+                    style={{ width: frame.w, height: frame.h, backgroundColor: frame.fillColor }}
+                  >
+                    {childEls.map(el => (
+                      <div key={el.id}
+                        className={`absolute ${prototypeLinks.some(l => l.fromId === el.id) ? "cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all" : ""}`}
+                        style={{
+                          left: el.x - frame.x, top: el.y - frame.y,
+                          width: el.w, height: el.h,
+                          opacity: el.opacity / 100,
+                        }}
+                        onClick={() => handlePreviewClick(el.id)}
+                      >
+                        {el.type === "Text" ? (
+                          <span style={{ color: el.fillColor, fontSize: el.fontSize, fontWeight: el.fontWeight, fontFamily: el.fontFamily }}>{el.text || el.label}</span>
+                        ) : (
+                          <svg width={el.w} height={el.h} className="overflow-visible">{renderShape(el)}</svg>
+                        )}
+                      </div>
+                    ))}
+                    {/* Show frame's own shape too */}
+                    <div className="absolute bottom-2 left-2 text-[9px] text-muted-foreground/50">{frame.label}</div>
+                  </motion.div>
+                );
+              })()}
+            </div>
+            {/* Frame navigation */}
+            <div className="h-14 glass-strong border-t border-border/30 flex items-center justify-center gap-2 px-4">
+              {elements.filter(el => el.type === "Frame").map(frame => (
+                <button key={frame.id} onClick={() => setPreviewCurrentFrame(frame.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${previewCurrentFrame === frame.id ? "bg-primary/20 text-primary" : "bg-secondary/40 text-muted-foreground hover:text-foreground"}`}>
+                  {frame.label}
+                </button>
+              ))}
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
