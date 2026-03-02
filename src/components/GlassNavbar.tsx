@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Mic, MicOff, Search, Sparkles } from "lucide-react";
+import { Mic, MicOff, Search, Sparkles, MessageSquare } from "lucide-react";
 import ProfileDropdown from "./ProfileDropdown";
 import CommandPalette from "./CommandPalette";
+import NavChatbot from "./NavChatbot";
 
 const navLinks = [
   { label: "Home", path: "/" },
@@ -15,6 +16,7 @@ const navLinks = [
 const GlassNavbar = () => {
   const location = useLocation();
   const [commandOpen, setCommandOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const [listening, setListening] = useState(false);
 
   // Cmd+K shortcut
@@ -106,6 +108,13 @@ const GlassNavbar = () => {
               <kbd className="hidden sm:inline px-1.5 py-0.5 rounded bg-background/50 text-[10px] font-mono">⌘K</kbd>
             </button>
             <button
+              onClick={() => setChatOpen(true)}
+              className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+              title="AI Assistant"
+            >
+              <MessageSquare className="w-4 h-4" />
+            </button>
+            <button
               onClick={toggleVoice}
               className={`p-2 rounded-lg transition-colors ${
                 listening
@@ -121,6 +130,7 @@ const GlassNavbar = () => {
         <div className="h-px w-full bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
       </motion.header>
       <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} />
+      <NavChatbot open={chatOpen} onClose={() => setChatOpen(false)} />
     </>
   );
 };
