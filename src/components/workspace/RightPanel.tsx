@@ -4,7 +4,8 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignStartVertical, AlignCenterVertical,
   AlignEndVertical, LayoutGrid, Droplet, Blend, SunDim, Ruler, Maximize2,
   Lock, Unlock, Eye, EyeOff, Copy, Trash2, MousePointer, ChevronRight,
-  ChevronDown, Bold, Italic, Underline, AlignJustify, Palette
+  ChevronDown, Bold, Italic, Underline, AlignJustify, Palette, Image,
+  Sun, Contrast, Paintbrush
 } from "lucide-react";
 import { CanvasElement, presetColors, fontFamilies, blendModes, strokeDashOptions } from "./types";
 
@@ -33,6 +34,15 @@ const NumberInput = ({ label, value, onChange, suffix }: { label: string; value:
     <input type="number" value={Math.round(value)} onChange={(e) => onChange(Number(e.target.value))}
       className="flex-1 bg-transparent text-[11px] text-foreground outline-none w-full [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
     {suffix && <span className="text-[8px] text-muted-foreground">{suffix}</span>}
+  </div>
+);
+
+const ImageSlider = ({ label, icon: Icon, value, onChange, min = 0, max = 200 }: { label: string; icon: any; value: number; onChange: (v: number) => void; min?: number; max?: number }) => (
+  <div className="flex items-center gap-2">
+    <Icon className="w-3 h-3 text-muted-foreground shrink-0" />
+    <span className="text-[9px] text-muted-foreground w-12">{label}</span>
+    <input type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} className="flex-1 accent-primary h-1" />
+    <span className="text-[10px] text-foreground w-8 text-right">{value}%</span>
   </div>
 );
 
@@ -149,6 +159,43 @@ const RightPanel = ({ activeEl, selectedId, collapsedSections, toggleSection, up
             </div>
           )}
         </div>
+      )}
+
+      {/* Image Editing Controls */}
+      {activeEl.type === "Image" && (
+        <>
+          <SectionHeader label="Image Adjustments" collapsed={!!collapsedSections["Image Adjustments"]} onToggle={() => toggleSection("Image Adjustments")} />
+          {!collapsedSections["Image Adjustments"] && (
+            <div className="px-1 space-y-2">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Image className="w-3 h-3 text-primary" />
+                <span className="text-[10px] text-muted-foreground">Object Fit</span>
+                <select value={activeEl.imageObjectFit || "cover"} onChange={(e) => updateSelected({ imageObjectFit: e.target.value })}
+                  className="flex-1 bg-secondary/50 rounded px-2 py-1 text-[10px] text-foreground outline-none">
+                  <option value="cover">Cover</option>
+                  <option value="contain">Contain</option>
+                  <option value="fill">Fill</option>
+                  <option value="none">None</option>
+                  <option value="scale-down">Scale Down</option>
+                </select>
+              </div>
+              <ImageSlider label="Brightness" icon={Sun} value={activeEl.imageBrightness ?? 100} onChange={(v) => updateSelected({ imageBrightness: v })} />
+              <ImageSlider label="Contrast" icon={Contrast} value={activeEl.imageContrast ?? 100} onChange={(v) => updateSelected({ imageContrast: v })} />
+              <ImageSlider label="Saturation" icon={Paintbrush} value={activeEl.imageSaturation ?? 100} onChange={(v) => updateSelected({ imageSaturation: v })} />
+              <ImageSlider label="Grayscale" icon={Droplet} value={activeEl.imageGrayscale ?? 0} onChange={(v) => updateSelected({ imageGrayscale: v })} max={100} />
+              <div className="flex items-center gap-2">
+                <RotateCcw className="w-3 h-3 text-muted-foreground shrink-0" />
+                <span className="text-[9px] text-muted-foreground w-12">Hue</span>
+                <input type="range" min={0} max={360} value={activeEl.imageHueRotate ?? 0} onChange={(e) => updateSelected({ imageHueRotate: Number(e.target.value) })} className="flex-1 accent-primary h-1" />
+                <span className="text-[10px] text-foreground w-8 text-right">{activeEl.imageHueRotate ?? 0}°</span>
+              </div>
+              <button onClick={() => updateSelected({ imageBrightness: 100, imageContrast: 100, imageSaturation: 100, imageGrayscale: 0, imageHueRotate: 0 })}
+                className="w-full py-1.5 rounded text-[10px] text-muted-foreground hover:text-foreground bg-secondary/30 hover:bg-secondary/60 transition-colors">
+                Reset All Adjustments
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {/* UI Theme */}

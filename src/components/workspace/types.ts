@@ -42,6 +42,12 @@ export type CanvasElement = {
   layoutGap?: number;
   layoutPadding?: number;
   imageUrl?: string;
+  imageBrightness?: number;
+  imageContrast?: number;
+  imageSaturation?: number;
+  imageObjectFit?: string;
+  imageGrayscale?: number;
+  imageHueRotate?: number;
 };
 
 export type LeftTab = "pages" | "layers" | "assets" | "find" | "inspector";
