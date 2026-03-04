@@ -70,6 +70,7 @@ const WorkspaceCanvas = () => {
   const [previewTransition, setPreviewTransition] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (selectedId !== null) setLastSelectedId(selectedId);
@@ -84,7 +85,10 @@ const WorkspaceCanvas = () => {
       if (editingTextId) return;
       const key = e.key.toUpperCase();
       const tool = allTools.find(t => t.shortcut === key);
-      if (tool && !e.metaKey && !e.ctrlKey) { setActiveTool(tool.label); e.preventDefault(); }
+      if (tool && !e.metaKey && !e.ctrlKey) {
+        if (tool.label === "Image") { imageInputRef.current?.click(); e.preventDefault(); return; }
+        setActiveTool(tool.label); e.preventDefault();
+      }
       if (e.key === "Delete" || e.key === "Backspace") { if (selectedId) { handleDelete(); e.preventDefault(); } }
       if ((e.metaKey || e.ctrlKey) && e.key === "z") { handleUndo(); e.preventDefault(); }
       if ((e.metaKey || e.ctrlKey) && e.key === "y") { handleRedo(); e.preventDefault(); }
@@ -118,6 +122,85 @@ const WorkspaceCanvas = () => {
 
   const isDrawingTool = ["Rectangle", "Ellipse", "Triangle", "Diamond", "Star", "Polygon", "Line", "Arrow", "Frame", "Text", "Component", "Slice", "Section"].includes(activeTool);
   const isPenTool = ["Pen", "Pencil", "Brush"].includes(activeTool);
+
+  // Image upload handler
+  const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new window.Image();
+      img.onload = () => {
+        pushHistory();
+        const maxW = 400, maxH = 400;
+        let w = img.width, h = img.height;
+        if (w > maxW) { h = h * (maxW / w); w = maxW; }
+        if (h > maxH) { w = w * (maxH / h); h = maxH; }
+        const newEl: CanvasElement = {
+          id: nextId++, type: "Image", x: 100 + Math.random() * 200, y: 100 + Math.random() * 200, w, h,
+          label: file.name, fillColor: "transparent", strokeColor: "transparent", strokeWidth: 0,
+          opacity: 100, rotation: 0, cornerRadius: 0, visible: true, locked: false,
+          imageUrl: reader.result as string,
+        };
+        setElements(prev => [...prev, newEl]);
+        setSelectedId(newEl.id);
+        setActiveTool("Select");
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  }, [pushHistory]);
+
+  // Add asset element to canvas
+  const addAssetToCanvas = useCallback((assetType: string) => {
+    pushHistory();
+    const color = defaultColors[Math.floor(Math.random() * defaultColors.length)];
+    const configs: Record<string, Partial<CanvasElement>> = {
+      "Button": { w: 120, h: 40, cornerRadius: 8, type: "Rectangle", label: "Button" },
+      "Card": { w: 240, h: 160, cornerRadius: 12, type: "Rectangle", label: "Card" },
+      "Input": { w: 200, h: 40, cornerRadius: 6, type: "Rectangle", label: "Input" },
+      "Badge": { w: 80, h: 28, cornerRadius: 14, type: "Rectangle", label: "Badge" },
+      "Avatar": { w: 48, h: 48, cornerRadius: 999, type: "Ellipse", label: "Avatar" },
+      "Modal": { w: 400, h: 300, cornerRadius: 16, type: "Frame", label: "Modal" },
+      "Tooltip": { w: 160, h: 36, cornerRadius: 6, type: "Rectangle", label: "Tooltip" },
+      "Dropdown": { w: 200, h: 180, cornerRadius: 8, type: "Rectangle", label: "Dropdown" },
+      "Tabs": { w: 300, h: 40, cornerRadius: 8, type: "Rectangle", label: "Tabs" },
+      "Accordion": { w: 300, h: 120, cornerRadius: 8, type: "Rectangle", label: "Accordion" },
+    };
+    const config = configs[assetType] || { w: 100, h: 100, cornerRadius: 8, type: "Rectangle", label: assetType };
+    const newEl: CanvasElement = {
+      id: nextId++, type: config.type || "Rectangle",
+      x: 150 + Math.random() * 200, y: 150 + Math.random() * 200,
+      w: config.w || 100, h: config.h || 100,
+      label: config.label || assetType, fillColor: color, strokeColor: color, strokeWidth: 2,
+      opacity: 100, rotation: 0, cornerRadius: config.cornerRadius || 0,
+      visible: true, locked: false,
+    };
+    setElements(prev => [...prev, newEl]);
+    setSelectedId(newEl.id);
+  }, [pushHistory]);
+
+  const addIconToCanvas = useCallback((iconName: string) => {
+    pushHistory();
+    const color = defaultColors[Math.floor(Math.random() * defaultColors.length)];
+    const typeMap: Record<string, string> = {
+      "Square": "Rectangle", "Circle": "Ellipse", "Triangle": "Triangle", "Star": "Star",
+      "Diamond": "Diamond", "Hexagon": "Polygon", "ArrowUpRight": "Arrow", "Minus": "Line",
+      "Type": "Text", "Image": "Rectangle", "Layout": "Frame", "Box": "Rectangle",
+    };
+    const type = typeMap[iconName] || "Rectangle";
+    const newEl: CanvasElement = {
+      id: nextId++, type, x: 200 + Math.random() * 200, y: 200 + Math.random() * 200,
+      w: type === "Text" ? 120 : 60, h: type === "Text" ? 30 : 60,
+      label: `${iconName} ${nextId}`, fillColor: color, strokeColor: color, strokeWidth: 2,
+      opacity: 100, rotation: 0, cornerRadius: type === "Rectangle" ? 8 : 0,
+      visible: true, locked: false,
+      ...(type === "Text" ? { text: "Text", fontSize: 16, fontWeight: "400", fontFamily: "Inter", textAlign: "left" } : {}),
+    };
+    setElements(prev => [...prev, newEl]);
+    setSelectedId(newEl.id);
+  }, [pushHistory]);
 
   const getCanvasPos = (e: React.MouseEvent | MouseEvent) => {
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -551,13 +634,19 @@ const WorkspaceCanvas = () => {
         </button>
         <div className="w-px h-5 bg-border/50 mx-1" />
 
+        {/* Hidden image file input */}
+        <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+
         {toolGroups.map(group => (
           <div key={group.label} className="flex items-center">
             {group.tools.map(item => {
               const Icon = iconMap[item.icon] || Square;
               return (
                 <button key={item.label} title={`${item.label} (${item.shortcut})`}
-                  onClick={() => { setActiveTool(item.label); if (isPenTool && !["Pen", "Pencil", "Brush"].includes(item.label)) finishPen(); }}
+                  onClick={() => {
+                    if (item.label === "Image") { imageInputRef.current?.click(); return; }
+                    setActiveTool(item.label); if (isPenTool && !["Pen", "Pencil", "Brush"].includes(item.label)) finishPen();
+                  }}
                   className={`p-1.5 rounded transition-all ${activeTool === item.label ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"}`}>
                   <Icon className="w-4 h-4" />
                 </button>
@@ -725,11 +814,35 @@ const WorkspaceCanvas = () => {
                       {!collapsedSections["Components"] && (
                         <div className="px-2 py-1 space-y-0.5">
                           {["Button", "Card", "Input", "Badge", "Avatar", "Modal", "Tooltip", "Dropdown", "Tabs", "Accordion"].map(c => (
-                            <div key={c} className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-muted-foreground hover:bg-secondary/60 cursor-pointer">
+                            <div key={c} onClick={() => addAssetToCanvas(c)} className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-muted-foreground hover:bg-primary/10 hover:text-foreground cursor-pointer transition-colors">
                               <Component className="w-3 h-3 text-primary" />
                               <span>{c}</span>
+                              <Plus className="w-3 h-3 ml-auto opacity-0 group-hover:opacity-100" />
                             </div>
                           ))}
+                        </div>
+                      )}
+                      {/* Images section */}
+                      <button onClick={() => toggleSection("Images")} className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors">
+                        <span>Images</span>
+                        {collapsedSections["Images"] ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                      </button>
+                      {!collapsedSections["Images"] && (
+                        <div className="px-2 py-1 space-y-1">
+                          <button onClick={() => imageInputRef.current?.click()}
+                            className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-dashed border-border/50 text-xs text-muted-foreground hover:text-primary hover:border-primary/30 transition-colors">
+                            <Image className="w-3.5 h-3.5" /> Upload Image
+                          </button>
+                          {elements.filter(el => el.type === "Image").length > 0 && (
+                            <div className="space-y-0.5">
+                              {elements.filter(el => el.type === "Image").map(el => (
+                                <div key={el.id} onClick={() => setSelectedId(el.id)} className="flex items-center gap-2 px-2 py-1.5 rounded text-xs text-muted-foreground hover:bg-secondary/60 cursor-pointer">
+                                  {el.imageUrl && <img src={el.imageUrl} alt="" className="w-6 h-6 rounded object-cover" />}
+                                  <span className="truncate">{el.label}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                       <button onClick={() => toggleSection("Icons")} className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors">
@@ -738,9 +851,15 @@ const WorkspaceCanvas = () => {
                       </button>
                       {!collapsedSections["Icons"] && (
                         <div className="px-2 py-1 grid grid-cols-6 gap-1">
-                          {[Square, Circle, Triangle, Star, Diamond, Hexagon, ArrowUpRight, Minus, Type, Image, Layout, Box].map((Icon, i) => (
-                            <div key={i} className="w-8 h-8 rounded flex items-center justify-center text-muted-foreground hover:bg-secondary/60 hover:text-foreground cursor-pointer">
-                              <Icon className="w-4 h-4" />
+                          {[
+                            { Icon: Square, name: "Square" }, { Icon: Circle, name: "Circle" }, { Icon: Triangle, name: "Triangle" },
+                            { Icon: Star, name: "Star" }, { Icon: Diamond, name: "Diamond" }, { Icon: Hexagon, name: "Hexagon" },
+                            { Icon: ArrowUpRight, name: "ArrowUpRight" }, { Icon: Minus, name: "Minus" }, { Icon: Type, name: "Type" },
+                            { Icon: Image, name: "Image" }, { Icon: Layout, name: "Layout" }, { Icon: Box, name: "Box" },
+                          ].map((item) => (
+                            <div key={item.name} onClick={() => addIconToCanvas(item.name)} title={item.name}
+                              className="w-8 h-8 rounded flex items-center justify-center text-muted-foreground hover:bg-primary/10 hover:text-primary cursor-pointer transition-colors">
+                              <item.Icon className="w-4 h-4" />
                             </div>
                           ))}
                         </div>
@@ -900,7 +1019,9 @@ const WorkspaceCanvas = () => {
                   }}
                   onDoubleClick={e => { e.stopPropagation(); if (el.type === "Text") setEditingTextId(el.id); }}
                 >
-                  {el.type === "Text" ? (
+                  {el.type === "Image" && el.imageUrl ? (
+                    <img src={el.imageUrl} alt={el.label} className="w-full h-full object-cover rounded select-none pointer-events-none" draggable={false} />
+                  ) : el.type === "Text" ? (
                     editingTextId === el.id ? (
                       <textarea autoFocus value={el.text || ""}
                         onChange={ev => setElements(prev => prev.map(x => x.id === el.id ? { ...x, text: ev.target.value } : x))}
