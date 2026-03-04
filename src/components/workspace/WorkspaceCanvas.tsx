@@ -69,6 +69,10 @@ const WorkspaceCanvas = () => {
   const [previewCurrentFrame, setPreviewCurrentFrame] = useState<number | null>(null);
   const [previewTransition, setPreviewTransition] = useState<string | null>(null);
 
+  const [gridSize, setGridSize] = useState(40);
+  const [gridStyle, setGridStyle] = useState<"lines" | "dots" | "cross">("lines");
+  const [isDragOver, setIsDragOver] = useState(false);
+
   const canvasRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -150,6 +154,53 @@ const WorkspaceCanvas = () => {
     };
     reader.readAsDataURL(file);
     e.target.value = "";
+  }, [pushHistory]);
+
+  // Drag-and-drop image upload
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith("image/"));
+    if (files.length === 0) return;
+    const dropPos = getCanvasPos(e as any);
+    files.forEach((file, idx) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new window.Image();
+        img.onload = () => {
+          pushHistory();
+          let w = img.width, h = img.height;
+          const maxW = 400, maxH = 400;
+          if (w > maxW) { h = h * (maxW / w); w = maxW; }
+          if (h > maxH) { w = w * (maxH / h); h = maxH; }
+          const newEl: CanvasElement = {
+            id: nextId++, type: "Image",
+            x: dropPos.x + idx * 30, y: dropPos.y + idx * 30, w, h,
+            label: file.name, fillColor: "transparent", strokeColor: "transparent", strokeWidth: 0,
+            opacity: 100, rotation: 0, cornerRadius: 0, visible: true, locked: false,
+            imageUrl: reader.result as string,
+          };
+          setElements(prev => [...prev, newEl]);
+          setSelectedId(newEl.id);
+        };
+        img.src = reader.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+    setActiveTool("Select");
   }, [pushHistory]);
 
   // Add asset element to canvas
@@ -678,7 +729,24 @@ const WorkspaceCanvas = () => {
 
         <button onClick={handleUndo} title="Undo (Ctrl+Z)" className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60"><Undo className="w-4 h-4" /></button>
         <button onClick={handleRedo} title="Redo (Ctrl+Y)" className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60"><Redo className="w-4 h-4" /></button>
-        <button onClick={() => setShowGrid(!showGrid)} title="Toggle Grid" className={`p-1.5 rounded transition-colors ${showGrid ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"}`}><Grid3X3 className="w-4 h-4" /></button>
+        <div className="relative group">
+          <button onClick={() => setShowGrid(!showGrid)} title="Toggle Grid" className={`p-1.5 rounded transition-colors ${showGrid ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"}`}><Grid3X3 className="w-4 h-4" /></button>
+          <div className="absolute top-full mt-1 left-0 hidden group-hover:block z-50">
+            <div className="glass-strong rounded-lg border border-border/30 p-2 w-44 space-y-2">
+              <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider">Grid Settings</p>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-muted-foreground w-8">Size</span>
+                <input type="range" min={10} max={100} value={gridSize} onChange={e => setGridSize(Number(e.target.value))} className="flex-1 accent-primary h-1" />
+                <span className="text-[10px] text-foreground w-6 text-right">{gridSize}</span>
+              </div>
+              <div className="flex gap-1">
+                {(["lines", "dots", "cross"] as const).map(s => (
+                  <button key={s} onClick={() => setGridStyle(s)} className={`flex-1 px-1.5 py-1 rounded text-[10px] capitalize transition-colors ${gridStyle === s ? "bg-primary/20 text-primary" : "text-muted-foreground hover:bg-secondary/60"}`}>{s}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
         <button onClick={() => setShowRulers(!showRulers)} title="Toggle Rulers" className={`p-1.5 rounded transition-colors ${showRulers ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"}`}><RulerIcon className="w-4 h-4" /></button>
         <button onClick={() => setShowExportModal(true)} title="Export" className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60"><Download className="w-4 h-4" /></button>
         <button onClick={() => setShowShortcuts(true)} title="Keyboard Shortcuts" className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60"><Keyboard className="w-4 h-4" /></button>
@@ -934,12 +1002,32 @@ const WorkspaceCanvas = () => {
             }}
             onMouseDown={handleCanvasMouseDown} onMouseUp={handleCanvasMouseUp} onMouseMove={handleCanvasMouseMove}
             onDoubleClick={() => { if (isPenTool) finishPen(); }}
+            onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
           >
+            {/* Drag-over overlay */}
+            {isDragOver && (
+              <div className="absolute inset-0 z-50 flex items-center justify-center bg-primary/10 border-2 border-dashed border-primary rounded-lg pointer-events-none">
+                <div className="text-center">
+                  <Image className="w-10 h-10 text-primary mx-auto mb-2 animate-bounce" />
+                  <p className="text-sm font-semibold text-primary">Drop images here</p>
+                </div>
+              </div>
+            )}
+
             {showGrid && (
-              <div className="absolute inset-0 opacity-[0.04]" style={{
-                backgroundImage: `linear-gradient(hsl(var(--primary) / 0.5) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--primary) / 0.5) 1px, transparent 1px)`,
-                backgroundSize: "40px 40px", backgroundPosition: `${panOffset.x}px ${panOffset.y}px`,
-              }} />
+              <div className="absolute inset-0 opacity-[0.06]" style={
+                gridStyle === "lines" ? {
+                  backgroundImage: `linear-gradient(hsl(var(--primary) / 0.5) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--primary) / 0.5) 1px, transparent 1px)`,
+                  backgroundSize: `${gridSize}px ${gridSize}px`, backgroundPosition: `${panOffset.x}px ${panOffset.y}px`,
+                } : gridStyle === "dots" ? {
+                  backgroundImage: `radial-gradient(circle, hsl(var(--primary) / 0.6) 1px, transparent 1px)`,
+                  backgroundSize: `${gridSize}px ${gridSize}px`, backgroundPosition: `${panOffset.x}px ${panOffset.y}px`,
+                } : {
+                  backgroundImage: `linear-gradient(hsl(var(--primary) / 0.4) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--primary) / 0.4) 1px, transparent 1px), radial-gradient(circle, hsl(var(--primary) / 0.6) 1.5px, transparent 1.5px)`,
+                  backgroundSize: `${gridSize}px ${gridSize}px, ${gridSize}px ${gridSize}px, ${gridSize}px ${gridSize}px`,
+                  backgroundPosition: `${panOffset.x}px ${panOffset.y}px`,
+                }
+              } />
             )}
 
             <div className="absolute bottom-3 left-3 z-10 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/80 backdrop-blur-sm">
@@ -1020,7 +1108,14 @@ const WorkspaceCanvas = () => {
                   onDoubleClick={e => { e.stopPropagation(); if (el.type === "Text") setEditingTextId(el.id); }}
                 >
                   {el.type === "Image" && el.imageUrl ? (
-                    <img src={el.imageUrl} alt={el.label} className="w-full h-full object-cover rounded select-none pointer-events-none" draggable={false} />
+                    <img src={el.imageUrl} alt={el.label}
+                      className="w-full h-full rounded select-none pointer-events-none"
+                      draggable={false}
+                      style={{
+                        objectFit: (el.imageObjectFit as any) || "cover",
+                        filter: `brightness(${(el.imageBrightness ?? 100) / 100}) contrast(${(el.imageContrast ?? 100) / 100}) saturate(${(el.imageSaturation ?? 100) / 100}) grayscale(${(el.imageGrayscale ?? 0) / 100}) hue-rotate(${el.imageHueRotate ?? 0}deg)`,
+                      }}
+                    />
                   ) : el.type === "Text" ? (
                     editingTextId === el.id ? (
                       <textarea autoFocus value={el.text || ""}
