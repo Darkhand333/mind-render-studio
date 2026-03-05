@@ -174,6 +174,114 @@ const WorkspaceCanvas = () => {
     setSelectedId(newEl.id);
   };
 
+  // Group selected elements
+  const handleGroupSelected = () => {
+    const ids = multiSelect.length > 1 ? multiSelect : selectedId ? [selectedId] : [];
+    if (ids.length < 2) return;
+    pushHistory();
+    const groupId = nextId++;
+    const groupEl: CanvasElement = {
+      id: groupId, type: "Frame", isGroup: true, children: ids,
+      x: Math.min(...ids.map(id => elements.find(e => e.id === id)?.x || 0)),
+      y: Math.min(...ids.map(id => elements.find(e => e.id === id)?.y || 0)),
+      w: 0, h: 0, label: `Group ${groupId}`,
+      fillColor: "transparent", strokeColor: "hsl(263, 70%, 58%)", strokeWidth: 1,
+      opacity: 100, rotation: 0, cornerRadius: 0, visible: true, locked: false,
+    };
+    const maxX = Math.max(...ids.map(id => { const e = elements.find(e => e.id === id); return e ? e.x + e.w : 0; }));
+    const maxY = Math.max(...ids.map(id => { const e = elements.find(e => e.id === id); return e ? e.y + e.h : 0; }));
+    groupEl.w = maxX - groupEl.x;
+    groupEl.h = maxY - groupEl.y;
+    setElements(prev => [...prev.map(el => ids.includes(el.id) ? { ...el, groupId } : el), groupEl]);
+    setSelectedId(groupId);
+    setMultiSelect([]);
+  };
+
+  const handleUngroupSelected = () => {
+    if (!selectedId) return;
+    const group = elements.find(e => e.id === selectedId && e.isGroup);
+    if (!group) return;
+    pushHistory();
+    setElements(prev => prev.filter(e => e.id !== selectedId).map(e => e.groupId === selectedId ? { ...e, groupId: undefined } : e));
+    setSelectedId(null);
+  };
+
+  // Page operations
+  const handleDeletePage = (pageId: number) => {
+    if (pages.length <= 1) return;
+    setPages(prev => {
+      const filtered = prev.filter(p => p.id !== pageId);
+      if (!filtered.some(p => p.active)) filtered[0].active = true;
+      return filtered;
+    });
+    setPageContextMenu(null);
+  };
+
+  const handleDuplicatePage = (pageId: number) => {
+    const page = pages.find(p => p.id === pageId);
+    if (!page) return;
+    const newId = Math.max(...pages.map(p => p.id)) + 1;
+    setPages(prev => [...prev, { id: newId, name: `${page.name} (Copy)`, active: false }]);
+    setPageContextMenu(null);
+  };
+
+  const handleRenamePage = (pageId: number) => {
+    const page = pages.find(p => p.id === pageId);
+    if (!page) return;
+    setRenamingPageId(pageId);
+    setRenameValue(page.name);
+    setPageContextMenu(null);
+  };
+
+  const commitRename = () => {
+    if (renamingPageId && renameValue.trim()) {
+      setPages(prev => prev.map(p => p.id === renamingPageId ? { ...p, name: renameValue.trim() } : p));
+    }
+    setRenamingPageId(null);
+  };
+
+  const handleCopyPageLink = (pageId: number) => {
+    const page = pages.find(p => p.id === pageId);
+    if (!page) return;
+    navigator.clipboard.writeText(`${window.location.origin}/workspace?page=${page.name}`);
+    setPageContextMenu(null);
+  };
+
+  // Rotation via drag handle
+  const handleRotationMouseDown = (e: React.MouseEvent, elId: number) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const el = elements.find(e => e.id === elId);
+    if (!el) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const centerX = el.x + el.w / 2;
+    const centerY = el.y + el.h / 2;
+    const scaleFactor = zoom / 100;
+    const mouseX = (e.clientX - rect.left - panOffset.x) / scaleFactor;
+    const mouseY = (e.clientY - rect.top - panOffset.y) / scaleFactor;
+    const startAngle = Math.atan2(mouseY - centerY, mouseX - centerX) * (180 / Math.PI);
+    pushHistory();
+    setRotating({ id: elId, startAngle, startRotation: el.rotation });
+
+    const onMove = (ev: MouseEvent) => {
+      const mx = (ev.clientX - rect.left - panOffset.x) / scaleFactor;
+      const my = (ev.clientY - rect.top - panOffset.y) / scaleFactor;
+      const currentAngle = Math.atan2(my - centerY, mx - centerX) * (180 / Math.PI);
+      let newRotation = el.rotation + (currentAngle - startAngle);
+      // Snap to 15-degree increments when holding shift
+      if (ev.shiftKey) newRotation = Math.round(newRotation / 15) * 15;
+      setElements(prev => prev.map(x => x.id === elId ? { ...x, rotation: Math.round(newRotation) } : x));
+    };
+    const onUp = () => {
+      setRotating(null);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   const isDrawingTool = ["Rectangle", "Ellipse", "Triangle", "Diamond", "Star", "Polygon", "Line", "Arrow", "Frame", "Text", "Component", "Slice", "Section"].includes(activeTool);
   const isPenTool = ["Pen", "Pencil", "Brush"].includes(activeTool);
 
