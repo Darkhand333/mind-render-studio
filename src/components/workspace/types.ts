@@ -17,6 +17,8 @@ export type CanvasElement = {
   flipH?: boolean;
   flipV?: boolean;
   points?: { x: number; y: number }[];
+  // Bezier control points for each point: [cp1x, cp1y, cp2x, cp2y]
+  controlPoints?: { cp1x: number; cp1y: number; cp2x: number; cp2y: number }[];
   text?: string;
   fontSize?: number;
   fontWeight?: string;
@@ -48,6 +50,10 @@ export type CanvasElement = {
   imageObjectFit?: string;
   imageGrayscale?: number;
   imageHueRotate?: number;
+  // Grouping
+  groupId?: number;
+  isGroup?: boolean;
+  children?: number[];
 };
 
 export type LeftTab = "pages" | "layers" | "assets" | "find" | "inspector";
@@ -128,31 +134,25 @@ export const deviceFrames: DeviceFrame[] = [
 ];
 
 export const projectTemplates: ProjectTemplate[] = [
-  // Presentations
   { id: "pres-16-9", name: "Presentation 16:9", type: "presentation", width: 1920, height: 1080, thumbnail: "🎞️", category: "Presentation" },
   { id: "pres-4-3", name: "Presentation 4:3", type: "presentation", width: 1024, height: 768, thumbnail: "🎞️", category: "Presentation" },
   { id: "pres-pitch", name: "Pitch Deck", type: "presentation", width: 1920, height: 1080, thumbnail: "📊", category: "Presentation" },
-  // Documents
   { id: "doc-a4", name: "A4 Document", type: "doc", width: 794, height: 1123, thumbnail: "📄", category: "Document" },
   { id: "doc-letter", name: "US Letter", type: "doc", width: 816, height: 1056, thumbnail: "📄", category: "Document" },
   { id: "doc-resume", name: "Resume", type: "doc", width: 816, height: 1056, thumbnail: "📝", category: "Document" },
-  // Social media
   { id: "ig-post", name: "Instagram Post", type: "design", width: 1080, height: 1080, thumbnail: "📸", category: "Social Media" },
   { id: "ig-story", name: "Instagram Story", type: "design", width: 1080, height: 1920, thumbnail: "📸", category: "Social Media" },
   { id: "fb-cover", name: "Facebook Cover", type: "design", width: 820, height: 312, thumbnail: "📘", category: "Social Media" },
   { id: "yt-thumbnail", name: "YouTube Thumbnail", type: "design", width: 1280, height: 720, thumbnail: "▶️", category: "Social Media" },
   { id: "twitter-post", name: "Twitter/X Post", type: "design", width: 1200, height: 675, thumbnail: "🐦", category: "Social Media" },
   { id: "linkedin-banner", name: "LinkedIn Banner", type: "design", width: 1584, height: 396, thumbnail: "💼", category: "Social Media" },
-  // Logos
   { id: "logo-sq", name: "Logo Square", type: "design", width: 500, height: 500, thumbnail: "🎨", category: "Logo" },
   { id: "logo-wide", name: "Logo Wide", type: "design", width: 800, height: 300, thumbnail: "🎨", category: "Logo" },
   { id: "logo-icon", name: "App Icon", type: "design", width: 1024, height: 1024, thumbnail: "📱", category: "Logo" },
   { id: "favicon", name: "Favicon", type: "design", width: 64, height: 64, thumbnail: "🔷", category: "Logo" },
-  // Marketing
   { id: "poster-a3", name: "Poster A3", type: "design", width: 1123, height: 1587, thumbnail: "🖼️", category: "Print" },
   { id: "flyer", name: "Flyer", type: "design", width: 612, height: 792, thumbnail: "📰", category: "Print" },
   { id: "bizcard", name: "Business Card", type: "design", width: 1050, height: 600, thumbnail: "💳", category: "Print" },
-  // Wireframe
   { id: "wireframe-web", name: "Web Wireframe", type: "design", width: 1440, height: 900, thumbnail: "🔲", category: "Wireframe" },
   { id: "wireframe-mobile", name: "Mobile Wireframe", type: "design", width: 375, height: 812, thumbnail: "🔲", category: "Wireframe" },
 ];
