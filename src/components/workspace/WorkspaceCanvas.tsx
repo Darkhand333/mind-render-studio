@@ -527,11 +527,20 @@ const WorkspaceCanvas = () => {
     pushHistory();
     const minX = Math.min(...penPoints.map(p => p.x));
     const minY = Math.min(...penPoints.map(p => p.y));
+    const relPoints = penPoints.map(p => ({ x: p.x - minX, y: p.y - minY }));
+    // Generate default bezier control points (smooth curves)
+    const cps = relPoints.map((p, i) => {
+      const prev = relPoints[i - 1] || p;
+      const next = relPoints[i + 1] || p;
+      const dx = (next.x - prev.x) * 0.25;
+      const dy = (next.y - prev.y) * 0.25;
+      return { cp1x: p.x - dx, cp1y: p.y - dy, cp2x: p.x + dx, cp2y: p.y + dy };
+    });
     const newEl: CanvasElement = {
       id: nextId++, type: "Pen", x: minX, y: minY, w: 0, h: 0,
       label: `Path ${nextId}`, fillColor: "transparent", strokeColor: defaultColors[4], strokeWidth: 2,
       opacity: 100, rotation: 0, cornerRadius: 0, visible: true, locked: false,
-      points: penPoints.map(p => ({ x: p.x - minX, y: p.y - minY })),
+      points: relPoints, controlPoints: cps,
     };
     setElements(prev => [...prev, newEl]);
     setSelectedId(newEl.id);
