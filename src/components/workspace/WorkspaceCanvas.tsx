@@ -978,19 +978,62 @@ const WorkspaceCanvas = () => {
                 {/* Tab content */}
                 <div className="flex-1 overflow-y-auto">
                   {leftTab === "pages" && (
-                    <div className="p-2">
+                    <div className="p-2 relative">
                       <div className="flex items-center justify-between px-2 mb-2">
                         <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Pages</span>
-                        <button onClick={() => setPages(p => [...p, { id: p.length + 1, name: `Page ${p.length + 1}`, active: false }])} className="p-1 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary"><Plus className="w-3 h-3" /></button>
+                        <button onClick={() => {
+                          const newId = Math.max(...pages.map(p => p.id), 0) + 1;
+                          setPages(p => [...p, { id: newId, name: `Page ${newId}`, active: false }]);
+                        }} className="p-1 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary"><Plus className="w-3 h-3" /></button>
                       </div>
                       {pages.map(page => (
-                        <button key={page.id} onClick={() => setPages(p => p.map(pg => ({ ...pg, active: pg.id === page.id })))}
-                          className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors mb-0.5 ${page.active ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-secondary/60"}`}>
-                          <FileText className="w-3 h-3" />
-                          <span className="flex-1 text-left">{page.name}</span>
-                          {page.active && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
-                        </button>
+                        <div key={page.id} className="relative mb-0.5">
+                          {renamingPageId === page.id ? (
+                            <div className="flex items-center gap-1 px-3 py-1.5">
+                              <FileText className="w-3 h-3 text-primary shrink-0" />
+                              <input autoFocus value={renameValue} onChange={e => setRenameValue(e.target.value)}
+                                onBlur={commitRename} onKeyDown={e => { if (e.key === "Enter") commitRename(); if (e.key === "Escape") setRenamingPageId(null); }}
+                                className="flex-1 bg-secondary/60 rounded px-1.5 py-0.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-primary/50" />
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setPages(p => p.map(pg => ({ ...pg, active: pg.id === page.id })))}
+                              onContextMenu={(e) => { e.preventDefault(); setPageContextMenu({ pageId: page.id, x: e.clientX, y: e.clientY }); }}
+                              className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors ${page.active ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-secondary/60"}`}>
+                              <FileText className="w-3 h-3" />
+                              <span className="flex-1 text-left truncate">{page.name}</span>
+                              {page.active && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
+                              <button onClick={(e) => { e.stopPropagation(); setPageContextMenu({ pageId: page.id, x: e.clientX, y: e.clientY }); }}
+                                className="p-0.5 rounded hover:bg-secondary/60 opacity-0 group-hover:opacity-100">
+                                <MoreHorizontal className="w-3 h-3" />
+                              </button>
+                            </button>
+                          )}
+                        </div>
                       ))}
+
+                      {/* Page Context Menu */}
+                      {pageContextMenu && (
+                        <div className="fixed z-[200] glass-strong rounded-lg border border-border/30 py-1 w-44 shadow-lg"
+                          style={{ top: pageContextMenu.y, left: pageContextMenu.x }}
+                          onClick={e => e.stopPropagation()}>
+                          <button onClick={() => handleRenamePage(pageContextMenu.pageId)} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/60">
+                            <Edit3 className="w-3 h-3" /> Rename Page
+                          </button>
+                          <button onClick={() => handleDuplicatePage(pageContextMenu.pageId)} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/60">
+                            <Copy className="w-3 h-3" /> Duplicate Page
+                          </button>
+                          <button onClick={() => handleCopyPageLink(pageContextMenu.pageId)} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/60">
+                            <ExternalLink className="w-3 h-3" /> Copy Link to Page
+                          </button>
+                          <div className="h-px bg-border/30 my-1" />
+                          <button onClick={() => handleDeletePage(pageContextMenu.pageId)}
+                            disabled={pages.length <= 1}
+                            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10 disabled:opacity-30 disabled:cursor-not-allowed">
+                            <Trash2 className="w-3 h-3" /> Delete Page
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
 
