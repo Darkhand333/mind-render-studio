@@ -1345,7 +1345,7 @@ const WorkspaceCanvas = () => {
                       {renderShape(el)}
                     </svg>
                   )}
-                  {/* Selection border + resize handles */}
+                  {/* Selection border + resize handles + rotation handle */}
                   {selectedId === el.id && !el.locked && !["Line", "Arrow", "Pen", "Pencil", "Brush"].includes(el.type) && (
                     <>
                       <div className="absolute inset-0 border-2 border-primary pointer-events-none" />
@@ -1353,10 +1353,24 @@ const WorkspaceCanvas = () => {
                         <div key={h} style={getHandleStyle(h)}
                           onMouseDown={e => { e.stopPropagation(); const pos = getCanvasPos(e); pushHistory(); setResizing({ id: el.id, handle: h, startX: pos.x, startY: pos.y, startW: el.w, startH: el.h, startElX: el.x, startElY: el.y }); }} />
                       ))}
+                      {/* Rotation handle - appears above the element */}
+                      <div
+                        className="absolute left-1/2 -translate-x-1/2 cursor-grab active:cursor-grabbing group"
+                        style={{ top: -30 }}
+                        onMouseDown={(e) => handleRotationMouseDown(e, el.id)}
+                        title={`Rotation: ${el.rotation}° (hold Shift for 15° steps)`}
+                      >
+                        <div className="w-4 h-4 rounded-full bg-primary border-2 border-primary-foreground flex items-center justify-center hover:scale-125 transition-transform">
+                          <RotateCw className="w-2.5 h-2.5 text-primary-foreground" />
+                        </div>
+                        <div className="w-px h-3 bg-primary mx-auto" />
+                      </div>
                     </>
                   )}
                   {selectedId === el.id && (
-                    <div className="absolute -bottom-5 left-0 text-[9px] text-primary font-medium whitespace-nowrap">{Math.round(el.w)} × {Math.round(el.h)}</div>
+                    <div className="absolute -bottom-5 left-0 text-[9px] text-primary font-medium whitespace-nowrap">
+                      {Math.round(el.w)} × {Math.round(el.h)} {el.rotation !== 0 && <span className="ml-1 text-accent">↻ {el.rotation}°</span>}
+                    </div>
                   )}
                   {/* Prototype linking indicator */}
                   {prototypeMode && linkingFrom === el.id && (
