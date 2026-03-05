@@ -1039,8 +1039,16 @@ const WorkspaceCanvas = () => {
 
                   {leftTab === "layers" && (
                     <div className="p-2">
-                      <div className="px-2 mb-2">
+                      <div className="flex items-center justify-between px-2 mb-2">
                         <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Layers ({elements.length})</span>
+                        <div className="flex items-center gap-0.5">
+                          <button onClick={handleGroupSelected} title="Group (Ctrl+G)" className="p-1 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary">
+                            <Group className="w-3 h-3" />
+                          </button>
+                          <button onClick={handleUngroupSelected} title="Ungroup" className="p-1 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary">
+                            <Ungroup className="w-3 h-3" />
+                          </button>
+                        </div>
                       </div>
                       {elements.length === 0 ? (
                         <div className="text-center py-8">
@@ -1052,11 +1060,20 @@ const WorkspaceCanvas = () => {
                         [...elements].reverse().map(el => (
                           <div key={el.id}
                             className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-colors mb-0.5 cursor-pointer ${
-                              (selectedId === el.id || lastSelectedId === el.id) ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-secondary/60"
-                            }`}
-                            onClick={() => setSelectedId(el.id)}>
+                              (selectedId === el.id || lastSelectedId === el.id || multiSelect.includes(el.id)) ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-secondary/60"
+                            } ${el.groupId ? "ml-3 border-l border-primary/20" : ""}`}
+                            onClick={(e) => {
+                              if (e.shiftKey) {
+                                setMultiSelect(prev => prev.includes(el.id) ? prev.filter(id => id !== el.id) : [...prev, el.id]);
+                              } else {
+                                setSelectedId(el.id);
+                                setMultiSelect([]);
+                              }
+                            }}>
+                            {el.isGroup && <FolderPlus className="w-3 h-3 text-primary shrink-0" />}
                             <div className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: el.fillColor + "66", border: `1px solid ${el.fillColor}` }} />
                             <span className="truncate flex-1">{el.label}</span>
+                            {el.isGroup && <span className="text-[8px] text-primary/60">group</span>}
                             {prototypeLinks.some(l => l.fromId === el.id) && <Link className="w-3 h-3 text-yellow-400 shrink-0" />}
                             <button onClick={ev => { ev.stopPropagation(); setElements(p => p.map(x => x.id === el.id ? { ...x, visible: !x.visible } : x)); }} className="p-0.5 hover:text-foreground shrink-0">
                               {el.visible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
