@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Mic, MicOff, Search, Sparkles, MessageSquare } from "lucide-react";
+import { Mic, Search, Sparkles, MessageSquare } from "lucide-react";
 import ProfileDropdown from "./ProfileDropdown";
 import CommandPalette from "./CommandPalette";
 import NavChatbot from "./NavChatbot";
+import VoiceCommandModal from "./VoiceCommandModal";
 
 const navLinks = [
   { label: "Home", path: "/" },
@@ -17,9 +18,8 @@ const GlassNavbar = () => {
   const location = useLocation();
   const [commandOpen, setCommandOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
-  const [listening, setListening] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
 
-  // Cmd+K shortcut
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -31,30 +31,10 @@ const GlassNavbar = () => {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  // Voice button - Web Speech API
-  const toggleVoice = useCallback(() => {
-    if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
-      alert("Voice recognition is not supported in this browser.");
-      return;
-    }
-    if (listening) {
-      setListening(false);
-      return;
-    }
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      console.log("Voice command:", transcript);
-      setListening(false);
-    };
-    recognition.onend = () => setListening(false);
-    recognition.onerror = () => setListening(false);
-    setListening(true);
-    recognition.start();
-  }, [listening]);
+  const handleVoiceCommand = (transcript: string) => {
+    console.log("Voice command:", transcript);
+    // Could route commands to chatbot or workspace
+  };
 
   return (
     <>
@@ -115,14 +95,11 @@ const GlassNavbar = () => {
               <MessageSquare className="w-4 h-4" />
             </button>
             <button
-              onClick={toggleVoice}
-              className={`p-2 rounded-lg transition-colors ${
-                listening
-                  ? "gradient-purple text-primary-foreground neon-glow-sm"
-                  : "text-muted-foreground hover:text-primary hover:bg-primary/10"
-              }`}
+              onClick={() => setVoiceOpen(true)}
+              className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+              title="Voice Commands"
             >
-              {listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              <Mic className="w-4 h-4" />
             </button>
             <ProfileDropdown />
           </div>
@@ -131,6 +108,7 @@ const GlassNavbar = () => {
       </motion.header>
       <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} />
       <NavChatbot open={chatOpen} onClose={() => setChatOpen(false)} />
+      <VoiceCommandModal open={voiceOpen} onClose={() => setVoiceOpen(false)} onCommand={handleVoiceCommand} />
     </>
   );
 };

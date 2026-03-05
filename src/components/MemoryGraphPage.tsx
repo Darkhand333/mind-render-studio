@@ -1,14 +1,20 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
-  Brain, ArrowRight, Zap, Clock, Layers, HelpCircle, X,
-  Activity, GitBranch, Code2, Palette, Layout, Shield,
-  TrendingUp, BarChart3, Eye, FileCode, Component, Cpu,
-  Database, Globe, Lock, Smartphone, Monitor, TabletSmartphone,
+  Brain, Zap, Clock, HelpCircle, X, Activity, GitBranch, Code2, Palette, Layout, Shield,
+  TrendingUp, BarChart3, Eye, FileCode, Component, Cpu, Database, Globe, Lock,
+  Smartphone, Monitor, TabletSmartphone, ChevronDown,
 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
-/* ── Static Data ── */
+/* ── Icon map for dynamic rendering ── */
+const iconMap: Record<string, any> = {
+  Brain, Zap, Activity, GitBranch, Code2, Palette, Layout, Shield,
+  Eye, FileCode, Component, Cpu, Database, Globe, Lock, Smartphone, Monitor,
+  TrendingUp, BarChart3,
+};
 
+/* ── Static Node Data ── */
 const projectNodes = [
   { id: 1, label: "Home Page", x: 60, y: 70, type: "page" },
   { id: 2, label: "Workspace", x: 300, y: 50, type: "page" },
@@ -22,11 +28,12 @@ const projectNodes = [
   { id: 10, label: "Living BG", x: 540, y: 380, type: "style" },
   { id: 11, label: "Profile", x: 60, y: 200, type: "component" },
   { id: 12, label: "Canvas", x: 540, y: 200, type: "component" },
+  { id: 13, label: "Voice Cmd", x: 380, y: 400, type: "component" },
 ];
 
 const projectEdges = [
   [1, 2], [1, 3], [1, 4], [2, 5], [1, 7], [2, 7], [7, 3], [7, 4],
-  [10, 1], [7, 9], [8, 7], [6, 1], [11, 5], [12, 2], [8, 2],
+  [10, 1], [7, 9], [8, 7], [6, 1], [11, 5], [12, 2], [8, 2], [13, 7],
 ];
 
 const typeColors: Record<string, string> = {
@@ -35,10 +42,17 @@ const typeColors: Record<string, string> = {
   style: "bg-neon-pink/20 border-neon-pink/40 text-neon-pink",
 };
 
+const categoryColors: Record<string, string> = {
+  ai: "bg-primary/15 text-primary",
+  feature: "bg-neon-blue/15 text-neon-blue",
+  style: "bg-neon-pink/15 text-neon-pink",
+  tooling: "bg-accent/15 text-accent",
+  backend: "bg-primary/15 text-primary",
+};
+
 const projectOverview = {
   name: "ProtoCraft",
-  description:
-    "A Figma-like prototyping platform with AI-powered design assistance, real-time collaboration, and intelligent memory tracking. Built with React, TypeScript, Tailwind CSS, and Framer Motion.",
+  description: "A Figma-like prototyping platform with AI-powered design assistance, real-time collaboration, and intelligent memory tracking. Built with React, TypeScript, Tailwind CSS, and Framer Motion.",
   stats: [
     { label: "Pages", value: "7", icon: Layout },
     { label: "Components", value: "25+", icon: Component },
@@ -65,58 +79,73 @@ const projectOverview = {
   ],
 };
 
-const generateActivities = () => {
-  const now = Date.now();
-  return [
-    { time: now - 10_000, action: "AI analyzed uploaded screenshot for accessibility", icon: Eye, category: "ai" },
-    { time: now - 90_000, action: "Added Gemini-powered chatbot to navbar", icon: Brain, category: "feature" },
-    { time: now - 180_000, action: "Created workspace canvas with snap guides", icon: Layout, category: "feature" },
-    { time: now - 360_000, action: "Implemented prototyping mode with transitions", icon: GitBranch, category: "feature" },
-    { time: now - 600_000, action: "UI theme switcher added (6 themes)", icon: Palette, category: "style" },
-    { time: now - 900_000, action: "Windows keyboard shortcuts panel created", icon: Code2, category: "tooling" },
-    { time: now - 1800_000, action: "Authentication system with Lovable Cloud", icon: Lock, category: "backend" },
-    { time: now - 3600_000, action: "Settings page with profile management", icon: Shield, category: "feature" },
-    { time: now - 5400_000, action: "Responsive device frames: iPhone, Mac, Android", icon: Smartphone, category: "feature" },
-    { time: now - 7200_000, action: "Multi-format export engine built", icon: FileCode, category: "feature" },
-  ];
+type DBActivity = {
+  id: string;
+  action: string;
+  category: string;
+  icon_name: string;
+  created_at: string;
 };
 
-const formatTimeAgo = (timestamp: number) => {
-  const diff = Date.now() - timestamp;
-  if (diff < 60_000) return "Just now";
-  if (diff < 3600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86400_000) return `${Math.floor(diff / 3600_000)}h ago`;
-  return `${Math.floor(diff / 86400_000)}d ago`;
-};
+const formatDateTime = (dateStr: string) => {
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diff = now.getTime() - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
 
-const categoryColors: Record<string, string> = {
-  ai: "bg-primary/15 text-primary",
-  feature: "bg-neon-blue/15 text-neon-blue",
-  style: "bg-neon-pink/15 text-neon-pink",
-  tooling: "bg-accent/15 text-accent",
-  backend: "bg-primary/15 text-primary",
+  let relative: string;
+  if (mins < 1) relative = "Just now";
+  else if (mins < 60) relative = `${mins}m ago`;
+  else if (hours < 24) relative = `${hours}h ago`;
+  else relative = `${days}d ago`;
+
+  const dateFormatted = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const timeFormatted = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+
+  return { relative, dateFormatted, timeFormatted };
 };
 
 /* ── Component ── */
-
 const MemoryGraphPage = () => {
   const [showGuide, setShowGuide] = useState(true);
-  const [activities] = useState(generateActivities);
   const [selectedNode, setSelectedNode] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"graph" | "overview" | "health">("graph");
+  const [activities, setActivities] = useState<DBActivity[]>([]);
+  const [showAllActivities, setShowAllActivities] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Live clock for relative times
-  const [, setTick] = useState(0);
+  // Fetch real activities from database
   useEffect(() => {
-    const interval = setInterval(() => setTick((t) => t + 1), 30_000);
-    return () => clearInterval(interval);
+    const fetchActivities = async () => {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("project_activities")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (!error && data) setActivities(data as DBActivity[]);
+      setLoading(false);
+    };
+    fetchActivities();
+
+    // Subscribe to realtime updates
+    const channel = supabase
+      .channel("activities-realtime")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "project_activities" }, (payload) => {
+        setActivities((prev) => [payload.new as DBActivity, ...prev].slice(0, 50));
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const connectedNodes = selectedNode
-    ? projectEdges
-        .filter(([a, b]) => a === selectedNode || b === selectedNode)
-        .map(([a, b]) => (a === selectedNode ? b : a))
+    ? projectEdges.filter(([a, b]) => a === selectedNode || b === selectedNode).map(([a, b]) => (a === selectedNode ? b : a))
     : [];
+
+  const displayedActivities = showAllActivities ? activities : activities.slice(0, 5);
 
   return (
     <div className="min-h-screen pt-20 px-4 sm:px-6 pb-12">
@@ -170,15 +199,10 @@ const MemoryGraphPage = () => {
             { key: "overview" as const, label: "Project Overview", icon: BarChart3 },
             { key: "health" as const, label: "Health & Insights", icon: TrendingUp },
           ].map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
+            <button key={tab.key} onClick={() => setActiveTab(tab.key)}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                activeTab === tab.key
-                  ? "gradient-purple text-primary-foreground neon-glow-sm"
-                  : "glass text-muted-foreground hover:text-foreground"
-              }`}
-            >
+                activeTab === tab.key ? "gradient-purple text-primary-foreground neon-glow-sm" : "glass text-muted-foreground hover:text-foreground"
+              }`}>
               <tab.icon className="w-4 h-4" />
               {tab.label}
             </button>
@@ -194,27 +218,17 @@ const MemoryGraphPage = () => {
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Live Architecture Map</p>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium animate-pulse">● Live</span>
                 </div>
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.98 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="glass rounded-2xl p-6 relative overflow-hidden"
-                  style={{ height: 500 }}
-                >
+                <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="glass rounded-2xl p-6 relative overflow-hidden" style={{ height: 500 }}>
                   <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ padding: 24 }}>
                     {projectEdges.map(([from, to], i) => {
                       const a = projectNodes.find((n) => n.id === from)!;
                       const b = projectNodes.find((n) => n.id === to)!;
-                      const isHighlighted =
-                        selectedNode !== null && (from === selectedNode || to === selectedNode);
+                      const isHighlighted = selectedNode !== null && (from === selectedNode || to === selectedNode);
                       return (
-                        <motion.line
-                          key={i}
-                          x1={a.x + 40} y1={a.y + 16}
-                          x2={b.x + 40} y2={b.y + 16}
+                        <motion.line key={i} x1={a.x + 40} y1={a.y + 16} x2={b.x + 40} y2={b.y + 16}
                           stroke={isHighlighted ? "hsl(var(--primary) / 0.7)" : "hsl(var(--primary) / 0.15)"}
                           strokeWidth={isHighlighted ? 2.5 : 1.5}
-                          initial={{ pathLength: 0, opacity: 0 }}
-                          animate={{ pathLength: 1, opacity: 1 }}
+                          initial={{ pathLength: 0, opacity: 0 }} animate={{ pathLength: 1, opacity: 1 }}
                           transition={{ duration: 0.8, delay: 0.3 + i * 0.05 }}
                         />
                       );
@@ -225,35 +239,23 @@ const MemoryGraphPage = () => {
                     const isSelected = selectedNode === node.id;
                     const isConnected = connectedNodes.includes(node.id);
                     return (
-                      <motion.div
-                        key={node.id}
-                        initial={{ opacity: 0, scale: 0.5 }}
-                        animate={{ opacity: 1, scale: 1 }}
+                      <motion.div key={node.id}
+                        initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }}
                         transition={{ duration: 0.5, delay: 0.2 + i * 0.04, ease: [0.22, 1, 0.36, 1] }}
                         whileHover={{ scale: 1.1, zIndex: 10 }}
                         onClick={() => setSelectedNode(isSelected ? null : node.id)}
                         className={`absolute px-3 py-2 rounded-lg border text-xs font-medium cursor-pointer transition-all ${typeColors[node.type]} ${
-                          isSelected ? "neon-glow ring-2 ring-primary/50 scale-110 z-10" : ""
-                        } ${isConnected ? "ring-1 ring-primary/30" : ""} ${
-                          selectedNode !== null && !isSelected && !isConnected ? "opacity-30" : ""
-                        }`}
-                        style={{ left: node.x, top: node.y }}
-                      >
+                          isSelected ? "neon-glow ring-2 ring-primary/50 scale-110 z-10" : ""} ${isConnected ? "ring-1 ring-primary/30" : ""} ${
+                          selectedNode !== null && !isSelected && !isConnected ? "opacity-30" : ""}`}
+                        style={{ left: node.x, top: node.y }}>
                         {node.label}
                       </motion.div>
                     );
                   })}
 
-                  {/* Selected node info */}
                   {selectedNode && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="absolute bottom-4 left-4 right-4 glass rounded-xl p-3 text-xs"
-                    >
-                      <p className="font-semibold text-foreground mb-1">
-                        {projectNodes.find((n) => n.id === selectedNode)?.label}
-                      </p>
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="absolute bottom-4 left-4 right-4 glass rounded-xl p-3 text-xs">
+                      <p className="font-semibold text-foreground mb-1">{projectNodes.find((n) => n.id === selectedNode)?.label}</p>
                       <p className="text-muted-foreground">
                         Connected to {connectedNodes.length} node{connectedNodes.length !== 1 ? "s" : ""}:{" "}
                         {connectedNodes.map((id) => projectNodes.find((n) => n.id === id)?.label).join(", ")}
@@ -266,7 +268,6 @@ const MemoryGraphPage = () => {
 
             {activeTab === "overview" && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-5">
-                {/* Project Description */}
                 <div className="glass rounded-2xl p-6">
                   <h3 className="text-lg font-bold text-foreground mb-2">{projectOverview.name}</h3>
                   <p className="text-sm text-muted-foreground leading-relaxed mb-4">{projectOverview.description}</p>
@@ -280,8 +281,6 @@ const MemoryGraphPage = () => {
                     ))}
                   </div>
                 </div>
-
-                {/* Tech Stack */}
                 <div className="glass rounded-2xl p-6">
                   <h3 className="text-sm font-semibold text-foreground mb-3">Tech Stack</h3>
                   <div className="grid grid-cols-3 gap-2">
@@ -293,8 +292,6 @@ const MemoryGraphPage = () => {
                     ))}
                   </div>
                 </div>
-
-                {/* Key Features */}
                 <div className="glass rounded-2xl p-6">
                   <h3 className="text-sm font-semibold text-foreground mb-3">Key Features</h3>
                   <div className="grid sm:grid-cols-2 gap-2">
@@ -311,7 +308,6 @@ const MemoryGraphPage = () => {
 
             {activeTab === "health" && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-5">
-                {/* Project Health */}
                 <div className="glass rounded-2xl p-6">
                   <h3 className="text-sm font-semibold text-foreground mb-4">Project Health Score</h3>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -320,23 +316,21 @@ const MemoryGraphPage = () => {
                       { label: "Performance", score: 88, color: "text-neon-blue" },
                       { label: "Consistency", score: 95, color: "text-primary" },
                       { label: "Responsiveness", score: 90, color: "text-neon-pink" },
-                    ].map((metric) => (
-                      <div key={metric.label} className="glass rounded-xl p-4 text-center">
-                        <p className={`text-2xl font-bold ${metric.color}`}>{metric.score}</p>
-                        <p className="text-[10px] text-muted-foreground mt-1">{metric.label}</p>
+                    ].map((m) => (
+                      <div key={m.label} className="glass rounded-xl p-4 text-center">
+                        <p className={`text-2xl font-bold ${m.color}`}>{m.score}</p>
+                        <p className="text-[10px] text-muted-foreground mt-1">{m.label}</p>
                       </div>
                     ))}
                   </div>
                 </div>
-
-                {/* Device Coverage */}
                 <div className="glass rounded-2xl p-6">
                   <h3 className="text-sm font-semibold text-foreground mb-3">Device Coverage</h3>
                   <div className="grid grid-cols-3 gap-3">
                     {[
-                      { label: "Desktop", icon: Monitor, status: "Full support", ok: true },
-                      { label: "Tablet", icon: TabletSmartphone, status: "Full support", ok: true },
-                      { label: "Mobile", icon: Smartphone, status: "Full support", ok: true },
+                      { label: "Desktop", icon: Monitor, status: "Full support" },
+                      { label: "Tablet", icon: TabletSmartphone, status: "Full support" },
+                      { label: "Mobile", icon: Smartphone, status: "Full support" },
                     ].map((d) => (
                       <div key={d.label} className="glass rounded-xl p-3 flex flex-col items-center gap-2 text-center">
                         <d.icon className="w-6 h-6 text-primary" />
@@ -346,69 +340,94 @@ const MemoryGraphPage = () => {
                     ))}
                   </div>
                 </div>
-
-                {/* Dependency Map */}
                 <div className="glass rounded-2xl p-6">
                   <h3 className="text-sm font-semibold text-foreground mb-3">Architecture Insights</h3>
                   <div className="space-y-2 text-xs text-muted-foreground">
-                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/50">
-                      <span className="flex items-center gap-2"><Globe className="w-3.5 h-3.5 text-primary" /> Routes configured</span>
-                      <span className="font-semibold text-foreground">8</span>
-                    </div>
-                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/50">
-                      <span className="flex items-center gap-2"><Shield className="w-3.5 h-3.5 text-primary" /> Auth-protected routes</span>
-                      <span className="font-semibold text-foreground">4</span>
-                    </div>
-                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/50">
-                      <span className="flex items-center gap-2"><Database className="w-3.5 h-3.5 text-primary" /> Database tables</span>
-                      <span className="font-semibold text-foreground">1 (profiles)</span>
-                    </div>
-                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/50">
-                      <span className="flex items-center gap-2"><Cpu className="w-3.5 h-3.5 text-primary" /> Backend functions</span>
-                      <span className="font-semibold text-foreground">1 (AI chat)</span>
-                    </div>
-                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/50">
-                      <span className="flex items-center gap-2"><Lock className="w-3.5 h-3.5 text-primary" /> RLS policies</span>
-                      <span className="font-semibold text-foreground">3 active</span>
-                    </div>
+                    {[
+                      { icon: Globe, label: "Routes configured", value: "8" },
+                      { icon: Shield, label: "Auth-protected routes", value: "4" },
+                      { icon: Database, label: "Database tables", value: "2" },
+                      { icon: Cpu, label: "Backend functions", value: "1 (AI chat)" },
+                      { icon: Lock, label: "RLS policies", value: "6 active" },
+                    ].map((item) => (
+                      <div key={item.label} className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/50">
+                        <span className="flex items-center gap-2"><item.icon className="w-3.5 h-3.5 text-primary" /> {item.label}</span>
+                        <span className="font-semibold text-foreground">{item.value}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </motion.div>
             )}
           </div>
 
-          {/* Right sidebar */}
+          {/* Right sidebar - Real Activities */}
           <div>
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
               <Clock className="w-4 h-4" />
               Recent Activity
             </h3>
-            <div className="space-y-2.5">
-              {activities.map((activity, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.2 + i * 0.06, duration: 0.4 }}
-                  className="glass rounded-xl p-3.5 hover:border-primary/30 transition-colors duration-300"
-                >
-                  <div className="flex items-start gap-2.5">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${categoryColors[activity.category] || "bg-primary/10"}`}>
-                      <activity.icon className="w-3.5 h-3.5" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs text-foreground leading-relaxed">{activity.action}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <p className="text-[10px] text-muted-foreground">{formatTimeAgo(activity.time)}</p>
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${categoryColors[activity.category]}`}>
-                          {activity.category}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
+
+            {loading ? (
+              <div className="text-center py-8">
+                <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-2" />
+                <p className="text-xs text-muted-foreground">Loading activities...</p>
+              </div>
+            ) : activities.length === 0 ? (
+              <div className="text-center py-8 glass rounded-xl">
+                <Activity className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                <p className="text-xs text-muted-foreground">No activities yet</p>
+                <p className="text-[10px] text-muted-foreground/60 mt-1">Activities will appear here as you work</p>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2.5">
+                  {displayedActivities.map((activity, i) => {
+                    const IconComp = iconMap[activity.icon_name] || Zap;
+                    const { relative, dateFormatted, timeFormatted } = formatDateTime(activity.created_at);
+                    return (
+                      <motion.div key={activity.id}
+                        initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.1 + i * 0.04, duration: 0.3 }}
+                        className="glass rounded-xl p-3.5 hover:border-primary/30 transition-colors duration-300"
+                      >
+                        <div className="flex items-start gap-2.5">
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${categoryColors[activity.category] || "bg-primary/10"}`}>
+                            <IconComp className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs text-foreground leading-relaxed">{activity.action}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <p className="text-[10px] text-muted-foreground">{relative}</p>
+                              <span className="text-[9px] text-muted-foreground/60">·</span>
+                              <p className="text-[10px] text-muted-foreground/60">{dateFormatted} {timeFormatted}</p>
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${categoryColors[activity.category]}`}>
+                                {activity.category}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+
+                {/* More button */}
+                {activities.length > 5 && !showAllActivities && (
+                  <button onClick={() => setShowAllActivities(true)}
+                    className="w-full mt-3 py-2 rounded-xl glass text-xs font-medium text-primary hover:bg-primary/10 transition-colors flex items-center justify-center gap-1.5">
+                    <ChevronDown className="w-3.5 h-3.5" />
+                    Show all {activities.length} activities
+                  </button>
+                )}
+                {showAllActivities && activities.length > 5 && (
+                  <button onClick={() => setShowAllActivities(false)}
+                    className="w-full mt-3 py-2 rounded-xl glass text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
+                    Show less
+                  </button>
+                )}
+              </>
+            )}
 
             {/* Node Type Legend */}
             <div className="mt-6 glass rounded-xl p-4">
@@ -441,7 +460,7 @@ const MemoryGraphPage = () => {
                   <span className="text-foreground font-medium">{projectEdges.length}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">Activities today</span>
+                  <span className="text-muted-foreground">Activities logged</span>
                   <span className="text-foreground font-medium">{activities.length}</span>
                 </div>
               </div>

@@ -7,7 +7,8 @@ import {
   Paintbrush, Minus, ArrowUpRight, Box, Slice, Navigation, Scale,
   FileText, File, Search, Package, Component, Home, X, Sparkles,
   Eye, EyeOff, Lock, Unlock, ChevronRight, ChevronDown, Keyboard, Info,
-  Play, Link, Unlink, Ruler as RulerIcon
+  Play, Link, Unlink, Ruler as RulerIcon, MoreHorizontal, Copy, Trash2,
+  Edit3, ExternalLink, FolderPlus, RotateCw, Group, Ungroup
 } from "lucide-react";
 import ComponentExplainer from "../ComponentExplainer";
 import HomeSidebar from "./HomeSidebar";
@@ -59,26 +60,73 @@ const WorkspaceCanvas = () => {
   const [pages, setPages] = useState([{ id: 1, name: "Page 1", active: true }]);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
-  // Snap guides
   const [activeSnapGuides, setActiveSnapGuides] = useState<SnapGuide[]>([]);
-  // Prototyping
   const [prototypeMode, setPrototypeMode] = useState(false);
   const [prototypeLinks, setPrototypeLinks] = useState<PrototypeLink[]>([]);
   const [linkingFrom, setLinkingFrom] = useState<number | null>(null);
   const [previewMode, setPreviewMode] = useState(false);
   const [previewCurrentFrame, setPreviewCurrentFrame] = useState<number | null>(null);
   const [previewTransition, setPreviewTransition] = useState<string | null>(null);
-
   const [gridSize, setGridSize] = useState(40);
   const [gridStyle, setGridStyle] = useState<"lines" | "dots" | "cross">("lines");
   const [isDragOver, setIsDragOver] = useState(false);
+  // Page context menu
+  const [pageContextMenu, setPageContextMenu] = useState<{ pageId: number; x: number; y: number } | null>(null);
+  const [renamingPageId, setRenamingPageId] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  // Rotation handle
+  const [rotating, setRotating] = useState<{ id: number; startAngle: number; startRotation: number } | null>(null);
+  // Bezier editing
+  const [editingBezier, setEditingBezier] = useState<number | null>(null);
+  const [draggingCP, setDraggingCP] = useState<{ pointIndex: number; cpType: "cp1" | "cp2" } | null>(null);
+  // Multi-select for grouping
+  const [multiSelect, setMultiSelect] = useState<number[]>([]);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const findInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (selectedId !== null) setLastSelectedId(selectedId);
   }, [selectedId]);
+
+  // Focus find input when tab changes
+  useEffect(() => {
+    if (leftTab === "find" && findInputRef.current) {
+      setTimeout(() => findInputRef.current?.focus(), 100);
+    }
+  }, [leftTab]);
+
+  // Canvas-only zoom (wheel event)
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.ctrlKey || e.metaKey) {
+        // Pinch zoom
+        const delta = e.deltaY > 0 ? -5 : 5;
+        setZoom(z => Math.max(10, Math.min(800, z + delta)));
+      } else {
+        // Scroll to pan
+        setPanOffset(prev => ({
+          x: prev.x - e.deltaX,
+          y: prev.y - e.deltaY,
+        }));
+      }
+    };
+    canvas.addEventListener("wheel", handler, { passive: false });
+    return () => canvas.removeEventListener("wheel", handler);
+  }, []);
+
+  // Close page context menu on click outside
+  useEffect(() => {
+    if (!pageContextMenu) return;
+    const handler = () => setPageContextMenu(null);
+    window.addEventListener("click", handler);
+    return () => window.removeEventListener("click", handler);
+  }, [pageContextMenu]);
 
   const activeElId = selectedId ?? lastSelectedId;
   const activeEl = activeElId ? elements.find(e => e.id === activeElId) || null : null;
@@ -86,7 +134,7 @@ const WorkspaceCanvas = () => {
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (editingTextId) return;
+      if (editingTextId || renamingPageId) return;
       const key = e.key.toUpperCase();
       const tool = allTools.find(t => t.shortcut === key);
       if (tool && !e.metaKey && !e.ctrlKey) {
@@ -97,14 +145,16 @@ const WorkspaceCanvas = () => {
       if ((e.metaKey || e.ctrlKey) && e.key === "z") { handleUndo(); e.preventDefault(); }
       if ((e.metaKey || e.ctrlKey) && e.key === "y") { handleRedo(); e.preventDefault(); }
       if ((e.metaKey || e.ctrlKey) && e.key === "d") { e.preventDefault(); handleDuplicate(); }
+      if ((e.metaKey || e.ctrlKey) && e.key === "g") { e.preventDefault(); handleGroupSelected(); }
       if (e.key === "Escape") {
         if (previewMode) { setPreviewMode(false); setPreviewCurrentFrame(null); }
-        else { setSelectedId(null); setActiveTool("Select"); }
+        else if (editingBezier) { setEditingBezier(null); }
+        else { setSelectedId(null); setActiveTool("Select"); setMultiSelect([]); }
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selectedId, editingTextId, elements, historyIdx, previewMode]);
+  }, [selectedId, editingTextId, elements, historyIdx, previewMode, renamingPageId, editingBezier]);
 
   const pushHistory = useCallback(() => {
     setHistory(prev => { const h = prev.slice(0, historyIdx + 1); h.push(JSON.parse(JSON.stringify(elements))); return h; });
@@ -122,6 +172,114 @@ const WorkspaceCanvas = () => {
     const newEl = { ...el, id: nextId++, x: el.x + 20, y: el.y + 20, label: `${el.label} copy` };
     setElements(prev => [...prev, newEl]);
     setSelectedId(newEl.id);
+  };
+
+  // Group selected elements
+  const handleGroupSelected = () => {
+    const ids = multiSelect.length > 1 ? multiSelect : selectedId ? [selectedId] : [];
+    if (ids.length < 2) return;
+    pushHistory();
+    const groupId = nextId++;
+    const groupEl: CanvasElement = {
+      id: groupId, type: "Frame", isGroup: true, children: ids,
+      x: Math.min(...ids.map(id => elements.find(e => e.id === id)?.x || 0)),
+      y: Math.min(...ids.map(id => elements.find(e => e.id === id)?.y || 0)),
+      w: 0, h: 0, label: `Group ${groupId}`,
+      fillColor: "transparent", strokeColor: "hsl(263, 70%, 58%)", strokeWidth: 1,
+      opacity: 100, rotation: 0, cornerRadius: 0, visible: true, locked: false,
+    };
+    const maxX = Math.max(...ids.map(id => { const e = elements.find(e => e.id === id); return e ? e.x + e.w : 0; }));
+    const maxY = Math.max(...ids.map(id => { const e = elements.find(e => e.id === id); return e ? e.y + e.h : 0; }));
+    groupEl.w = maxX - groupEl.x;
+    groupEl.h = maxY - groupEl.y;
+    setElements(prev => [...prev.map(el => ids.includes(el.id) ? { ...el, groupId } : el), groupEl]);
+    setSelectedId(groupId);
+    setMultiSelect([]);
+  };
+
+  const handleUngroupSelected = () => {
+    if (!selectedId) return;
+    const group = elements.find(e => e.id === selectedId && e.isGroup);
+    if (!group) return;
+    pushHistory();
+    setElements(prev => prev.filter(e => e.id !== selectedId).map(e => e.groupId === selectedId ? { ...e, groupId: undefined } : e));
+    setSelectedId(null);
+  };
+
+  // Page operations
+  const handleDeletePage = (pageId: number) => {
+    if (pages.length <= 1) return;
+    setPages(prev => {
+      const filtered = prev.filter(p => p.id !== pageId);
+      if (!filtered.some(p => p.active)) filtered[0].active = true;
+      return filtered;
+    });
+    setPageContextMenu(null);
+  };
+
+  const handleDuplicatePage = (pageId: number) => {
+    const page = pages.find(p => p.id === pageId);
+    if (!page) return;
+    const newId = Math.max(...pages.map(p => p.id)) + 1;
+    setPages(prev => [...prev, { id: newId, name: `${page.name} (Copy)`, active: false }]);
+    setPageContextMenu(null);
+  };
+
+  const handleRenamePage = (pageId: number) => {
+    const page = pages.find(p => p.id === pageId);
+    if (!page) return;
+    setRenamingPageId(pageId);
+    setRenameValue(page.name);
+    setPageContextMenu(null);
+  };
+
+  const commitRename = () => {
+    if (renamingPageId && renameValue.trim()) {
+      setPages(prev => prev.map(p => p.id === renamingPageId ? { ...p, name: renameValue.trim() } : p));
+    }
+    setRenamingPageId(null);
+  };
+
+  const handleCopyPageLink = (pageId: number) => {
+    const page = pages.find(p => p.id === pageId);
+    if (!page) return;
+    navigator.clipboard.writeText(`${window.location.origin}/workspace?page=${page.name}`);
+    setPageContextMenu(null);
+  };
+
+  // Rotation via drag handle
+  const handleRotationMouseDown = (e: React.MouseEvent, elId: number) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const el = elements.find(e => e.id === elId);
+    if (!el) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const centerX = el.x + el.w / 2;
+    const centerY = el.y + el.h / 2;
+    const scaleFactor = zoom / 100;
+    const mouseX = (e.clientX - rect.left - panOffset.x) / scaleFactor;
+    const mouseY = (e.clientY - rect.top - panOffset.y) / scaleFactor;
+    const startAngle = Math.atan2(mouseY - centerY, mouseX - centerX) * (180 / Math.PI);
+    pushHistory();
+    setRotating({ id: elId, startAngle, startRotation: el.rotation });
+
+    const onMove = (ev: MouseEvent) => {
+      const mx = (ev.clientX - rect.left - panOffset.x) / scaleFactor;
+      const my = (ev.clientY - rect.top - panOffset.y) / scaleFactor;
+      const currentAngle = Math.atan2(my - centerY, mx - centerX) * (180 / Math.PI);
+      let newRotation = el.rotation + (currentAngle - startAngle);
+      // Snap to 15-degree increments when holding shift
+      if (ev.shiftKey) newRotation = Math.round(newRotation / 15) * 15;
+      setElements(prev => prev.map(x => x.id === elId ? { ...x, rotation: Math.round(newRotation) } : x));
+    };
+    const onUp = () => {
+      setRotating(null);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
   };
 
   const isDrawingTool = ["Rectangle", "Ellipse", "Triangle", "Diamond", "Star", "Polygon", "Line", "Arrow", "Frame", "Text", "Component", "Slice", "Section"].includes(activeTool);
@@ -369,11 +527,20 @@ const WorkspaceCanvas = () => {
     pushHistory();
     const minX = Math.min(...penPoints.map(p => p.x));
     const minY = Math.min(...penPoints.map(p => p.y));
+    const relPoints = penPoints.map(p => ({ x: p.x - minX, y: p.y - minY }));
+    // Generate default bezier control points (smooth curves)
+    const cps = relPoints.map((p, i) => {
+      const prev = relPoints[i - 1] || p;
+      const next = relPoints[i + 1] || p;
+      const dx = (next.x - prev.x) * 0.25;
+      const dy = (next.y - prev.y) * 0.25;
+      return { cp1x: p.x - dx, cp1y: p.y - dy, cp2x: p.x + dx, cp2y: p.y + dy };
+    });
     const newEl: CanvasElement = {
       id: nextId++, type: "Pen", x: minX, y: minY, w: 0, h: 0,
       label: `Path ${nextId}`, fillColor: "transparent", strokeColor: defaultColors[4], strokeWidth: 2,
       opacity: 100, rotation: 0, cornerRadius: 0, visible: true, locked: false,
-      points: penPoints.map(p => ({ x: p.x - minX, y: p.y - minY })),
+      points: relPoints, controlPoints: cps,
     };
     setElements(prev => [...prev, newEl]);
     setSelectedId(newEl.id);
@@ -597,6 +764,16 @@ const WorkspaceCanvas = () => {
       }
       case "Pen": case "Pencil": case "Brush":
         if (el.points && el.points.length > 1) {
+          // Support bezier curves if controlPoints exist
+          if (el.controlPoints && el.controlPoints.length === el.points.length) {
+            let d = `M${el.points[0].x},${el.points[0].y}`;
+            for (let i = 1; i < el.points.length; i++) {
+              const cp = el.controlPoints[i - 1];
+              const p = el.points[i];
+              d += ` C${cp.cp2x},${cp.cp2y} ${el.controlPoints[i].cp1x},${el.controlPoints[i].cp1y} ${p.x},${p.y}`;
+            }
+            return <path d={d} fill="none" stroke={el.strokeColor} strokeWidth={el.strokeWidth} strokeLinecap="round" strokeLinejoin="round" />;
+          }
           const d = el.points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
           return <path d={d} fill="none" stroke={el.strokeColor} strokeWidth={el.strokeWidth} strokeLinecap="round" strokeLinejoin="round" />;
         }
@@ -820,26 +997,77 @@ const WorkspaceCanvas = () => {
                 {/* Tab content */}
                 <div className="flex-1 overflow-y-auto">
                   {leftTab === "pages" && (
-                    <div className="p-2">
+                    <div className="p-2 relative">
                       <div className="flex items-center justify-between px-2 mb-2">
                         <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Pages</span>
-                        <button onClick={() => setPages(p => [...p, { id: p.length + 1, name: `Page ${p.length + 1}`, active: false }])} className="p-1 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary"><Plus className="w-3 h-3" /></button>
+                        <button onClick={() => {
+                          const newId = Math.max(...pages.map(p => p.id), 0) + 1;
+                          setPages(p => [...p, { id: newId, name: `Page ${newId}`, active: false }]);
+                        }} className="p-1 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary"><Plus className="w-3 h-3" /></button>
                       </div>
                       {pages.map(page => (
-                        <button key={page.id} onClick={() => setPages(p => p.map(pg => ({ ...pg, active: pg.id === page.id })))}
-                          className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors mb-0.5 ${page.active ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-secondary/60"}`}>
-                          <FileText className="w-3 h-3" />
-                          <span className="flex-1 text-left">{page.name}</span>
-                          {page.active && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
-                        </button>
+                        <div key={page.id} className="relative mb-0.5">
+                          {renamingPageId === page.id ? (
+                            <div className="flex items-center gap-1 px-3 py-1.5">
+                              <FileText className="w-3 h-3 text-primary shrink-0" />
+                              <input autoFocus value={renameValue} onChange={e => setRenameValue(e.target.value)}
+                                onBlur={commitRename} onKeyDown={e => { if (e.key === "Enter") commitRename(); if (e.key === "Escape") setRenamingPageId(null); }}
+                                className="flex-1 bg-secondary/60 rounded px-1.5 py-0.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-primary/50" />
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setPages(p => p.map(pg => ({ ...pg, active: pg.id === page.id })))}
+                              onContextMenu={(e) => { e.preventDefault(); setPageContextMenu({ pageId: page.id, x: e.clientX, y: e.clientY }); }}
+                              className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors ${page.active ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-secondary/60"}`}>
+                              <FileText className="w-3 h-3" />
+                              <span className="flex-1 text-left truncate">{page.name}</span>
+                              {page.active && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
+                              <button onClick={(e) => { e.stopPropagation(); setPageContextMenu({ pageId: page.id, x: e.clientX, y: e.clientY }); }}
+                                className="p-0.5 rounded hover:bg-secondary/60 opacity-0 group-hover:opacity-100">
+                                <MoreHorizontal className="w-3 h-3" />
+                              </button>
+                            </button>
+                          )}
+                        </div>
                       ))}
+
+                      {/* Page Context Menu */}
+                      {pageContextMenu && (
+                        <div className="fixed z-[200] glass-strong rounded-lg border border-border/30 py-1 w-44 shadow-lg"
+                          style={{ top: pageContextMenu.y, left: pageContextMenu.x }}
+                          onClick={e => e.stopPropagation()}>
+                          <button onClick={() => handleRenamePage(pageContextMenu.pageId)} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/60">
+                            <Edit3 className="w-3 h-3" /> Rename Page
+                          </button>
+                          <button onClick={() => handleDuplicatePage(pageContextMenu.pageId)} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/60">
+                            <Copy className="w-3 h-3" /> Duplicate Page
+                          </button>
+                          <button onClick={() => handleCopyPageLink(pageContextMenu.pageId)} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/60">
+                            <ExternalLink className="w-3 h-3" /> Copy Link to Page
+                          </button>
+                          <div className="h-px bg-border/30 my-1" />
+                          <button onClick={() => handleDeletePage(pageContextMenu.pageId)}
+                            disabled={pages.length <= 1}
+                            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10 disabled:opacity-30 disabled:cursor-not-allowed">
+                            <Trash2 className="w-3 h-3" /> Delete Page
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
 
                   {leftTab === "layers" && (
                     <div className="p-2">
-                      <div className="px-2 mb-2">
+                      <div className="flex items-center justify-between px-2 mb-2">
                         <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Layers ({elements.length})</span>
+                        <div className="flex items-center gap-0.5">
+                          <button onClick={handleGroupSelected} title="Group (Ctrl+G)" className="p-1 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary">
+                            <Group className="w-3 h-3" />
+                          </button>
+                          <button onClick={handleUngroupSelected} title="Ungroup" className="p-1 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary">
+                            <Ungroup className="w-3 h-3" />
+                          </button>
+                        </div>
                       </div>
                       {elements.length === 0 ? (
                         <div className="text-center py-8">
@@ -851,11 +1079,20 @@ const WorkspaceCanvas = () => {
                         [...elements].reverse().map(el => (
                           <div key={el.id}
                             className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-colors mb-0.5 cursor-pointer ${
-                              (selectedId === el.id || lastSelectedId === el.id) ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-secondary/60"
-                            }`}
-                            onClick={() => setSelectedId(el.id)}>
+                              (selectedId === el.id || lastSelectedId === el.id || multiSelect.includes(el.id)) ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-secondary/60"
+                            } ${el.groupId ? "ml-3 border-l border-primary/20" : ""}`}
+                            onClick={(e) => {
+                              if (e.shiftKey) {
+                                setMultiSelect(prev => prev.includes(el.id) ? prev.filter(id => id !== el.id) : [...prev, el.id]);
+                              } else {
+                                setSelectedId(el.id);
+                                setMultiSelect([]);
+                              }
+                            }}>
+                            {el.isGroup && <FolderPlus className="w-3 h-3 text-primary shrink-0" />}
                             <div className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: el.fillColor + "66", border: `1px solid ${el.fillColor}` }} />
                             <span className="truncate flex-1">{el.label}</span>
+                            {el.isGroup && <span className="text-[8px] text-primary/60">group</span>}
                             {prototypeLinks.some(l => l.fromId === el.id) && <Link className="w-3 h-3 text-yellow-400 shrink-0" />}
                             <button onClick={ev => { ev.stopPropagation(); setElements(p => p.map(x => x.id === el.id ? { ...x, visible: !x.visible } : x)); }} className="p-0.5 hover:text-foreground shrink-0">
                               {el.visible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
@@ -937,14 +1174,26 @@ const WorkspaceCanvas = () => {
 
                   {leftTab === "find" && (
                     <div className="p-2">
-                      <input placeholder="Find in design..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                      <input ref={findInputRef} placeholder="Search elements by name or type..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                        autoFocus
                         className="w-full bg-secondary/50 rounded-lg px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/50 mb-2" />
-                      {filteredElements.length === 0 ? (
+                      {searchQuery && (
+                        <p className="text-[10px] text-muted-foreground mb-2 px-1">{filteredElements.length} result{filteredElements.length !== 1 ? "s" : ""} found</p>
+                      )}
+                      {!searchQuery ? (
+                        <div className="text-center py-6">
+                          <Search className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                          <p className="text-xs text-muted-foreground">Type to search elements</p>
+                          <p className="text-[10px] text-muted-foreground/60 mt-1">Search by name, type, or label</p>
+                        </div>
+                      ) : filteredElements.length === 0 ? (
                         <p className="text-xs text-muted-foreground text-center py-4">No results found</p>
                       ) : (
                         filteredElements.map(el => (
-                          <button key={el.id} onClick={() => setSelectedId(el.id)}
-                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-muted-foreground hover:bg-secondary/60 mb-0.5">
+                          <button key={el.id} onClick={() => { setSelectedId(el.id); setLeftTab("layers"); }}
+                            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors mb-0.5 ${
+                              selectedId === el.id ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-secondary/60"
+                            }`}>
                             <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: el.fillColor + "66" }} />
                             <span className="truncate flex-1 text-left">{el.label}</span>
                             <span className="text-[9px] text-muted-foreground/60">{el.type}</span>
@@ -1132,7 +1381,7 @@ const WorkspaceCanvas = () => {
                       {renderShape(el)}
                     </svg>
                   )}
-                  {/* Selection border + resize handles */}
+                  {/* Selection border + resize handles + rotation handle */}
                   {selectedId === el.id && !el.locked && !["Line", "Arrow", "Pen", "Pencil", "Brush"].includes(el.type) && (
                     <>
                       <div className="absolute inset-0 border-2 border-primary pointer-events-none" />
@@ -1140,10 +1389,24 @@ const WorkspaceCanvas = () => {
                         <div key={h} style={getHandleStyle(h)}
                           onMouseDown={e => { e.stopPropagation(); const pos = getCanvasPos(e); pushHistory(); setResizing({ id: el.id, handle: h, startX: pos.x, startY: pos.y, startW: el.w, startH: el.h, startElX: el.x, startElY: el.y }); }} />
                       ))}
+                      {/* Rotation handle - appears above the element */}
+                      <div
+                        className="absolute left-1/2 -translate-x-1/2 cursor-grab active:cursor-grabbing group"
+                        style={{ top: -30 }}
+                        onMouseDown={(e) => handleRotationMouseDown(e, el.id)}
+                        title={`Rotation: ${el.rotation}° (hold Shift for 15° steps)`}
+                      >
+                        <div className="w-4 h-4 rounded-full bg-primary border-2 border-primary-foreground flex items-center justify-center hover:scale-125 transition-transform">
+                          <RotateCw className="w-2.5 h-2.5 text-primary-foreground" />
+                        </div>
+                        <div className="w-px h-3 bg-primary mx-auto" />
+                      </div>
                     </>
                   )}
                   {selectedId === el.id && (
-                    <div className="absolute -bottom-5 left-0 text-[9px] text-primary font-medium whitespace-nowrap">{Math.round(el.w)} × {Math.round(el.h)}</div>
+                    <div className="absolute -bottom-5 left-0 text-[9px] text-primary font-medium whitespace-nowrap">
+                      {Math.round(el.w)} × {Math.round(el.h)} {el.rotation !== 0 && <span className="ml-1 text-accent">↻ {el.rotation}°</span>}
+                    </div>
                   )}
                   {/* Prototype linking indicator */}
                   {prototypeMode && linkingFrom === el.id && (
