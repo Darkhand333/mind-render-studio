@@ -90,13 +90,51 @@ const WorkspaceCanvas = () => {
     if (selectedId !== null) setLastSelectedId(selectedId);
   }, [selectedId]);
 
+  // Focus find input when tab changes
+  useEffect(() => {
+    if (leftTab === "find" && findInputRef.current) {
+      setTimeout(() => findInputRef.current?.focus(), 100);
+    }
+  }, [leftTab]);
+
+  // Canvas-only zoom (wheel event)
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.ctrlKey || e.metaKey) {
+        // Pinch zoom
+        const delta = e.deltaY > 0 ? -5 : 5;
+        setZoom(z => Math.max(10, Math.min(800, z + delta)));
+      } else {
+        // Scroll to pan
+        setPanOffset(prev => ({
+          x: prev.x - e.deltaX,
+          y: prev.y - e.deltaY,
+        }));
+      }
+    };
+    canvas.addEventListener("wheel", handler, { passive: false });
+    return () => canvas.removeEventListener("wheel", handler);
+  }, []);
+
+  // Close page context menu on click outside
+  useEffect(() => {
+    if (!pageContextMenu) return;
+    const handler = () => setPageContextMenu(null);
+    window.addEventListener("click", handler);
+    return () => window.removeEventListener("click", handler);
+  }, [pageContextMenu]);
+
   const activeElId = selectedId ?? lastSelectedId;
   const activeEl = activeElId ? elements.find(e => e.id === activeElId) || null : null;
 
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (editingTextId) return;
+      if (editingTextId || renamingPageId) return;
       const key = e.key.toUpperCase();
       const tool = allTools.find(t => t.shortcut === key);
       if (tool && !e.metaKey && !e.ctrlKey) {
@@ -107,14 +145,16 @@ const WorkspaceCanvas = () => {
       if ((e.metaKey || e.ctrlKey) && e.key === "z") { handleUndo(); e.preventDefault(); }
       if ((e.metaKey || e.ctrlKey) && e.key === "y") { handleRedo(); e.preventDefault(); }
       if ((e.metaKey || e.ctrlKey) && e.key === "d") { e.preventDefault(); handleDuplicate(); }
+      if ((e.metaKey || e.ctrlKey) && e.key === "g") { e.preventDefault(); handleGroupSelected(); }
       if (e.key === "Escape") {
         if (previewMode) { setPreviewMode(false); setPreviewCurrentFrame(null); }
-        else { setSelectedId(null); setActiveTool("Select"); }
+        else if (editingBezier) { setEditingBezier(null); }
+        else { setSelectedId(null); setActiveTool("Select"); setMultiSelect([]); }
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selectedId, editingTextId, elements, historyIdx, previewMode]);
+  }, [selectedId, editingTextId, elements, historyIdx, previewMode, renamingPageId, editingBezier]);
 
   const pushHistory = useCallback(() => {
     setHistory(prev => { const h = prev.slice(0, historyIdx + 1); h.push(JSON.parse(JSON.stringify(elements))); return h; });
