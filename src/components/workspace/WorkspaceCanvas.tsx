@@ -1138,14 +1138,26 @@ const WorkspaceCanvas = () => {
 
                   {leftTab === "find" && (
                     <div className="p-2">
-                      <input placeholder="Find in design..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                      <input ref={findInputRef} placeholder="Search elements by name or type..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                        autoFocus
                         className="w-full bg-secondary/50 rounded-lg px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/50 mb-2" />
-                      {filteredElements.length === 0 ? (
+                      {searchQuery && (
+                        <p className="text-[10px] text-muted-foreground mb-2 px-1">{filteredElements.length} result{filteredElements.length !== 1 ? "s" : ""} found</p>
+                      )}
+                      {!searchQuery ? (
+                        <div className="text-center py-6">
+                          <Search className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                          <p className="text-xs text-muted-foreground">Type to search elements</p>
+                          <p className="text-[10px] text-muted-foreground/60 mt-1">Search by name, type, or label</p>
+                        </div>
+                      ) : filteredElements.length === 0 ? (
                         <p className="text-xs text-muted-foreground text-center py-4">No results found</p>
                       ) : (
                         filteredElements.map(el => (
-                          <button key={el.id} onClick={() => setSelectedId(el.id)}
-                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs text-muted-foreground hover:bg-secondary/60 mb-0.5">
+                          <button key={el.id} onClick={() => { setSelectedId(el.id); setLeftTab("layers"); }}
+                            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors mb-0.5 ${
+                              selectedId === el.id ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-secondary/60"
+                            }`}>
                             <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: el.fillColor + "66" }} />
                             <span className="truncate flex-1 text-left">{el.label}</span>
                             <span className="text-[9px] text-muted-foreground/60">{el.type}</span>
