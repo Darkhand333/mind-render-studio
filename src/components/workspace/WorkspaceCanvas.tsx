@@ -7,7 +7,8 @@ import {
   Paintbrush, Minus, ArrowUpRight, Box, Slice, Navigation, Scale,
   FileText, File, Search, Package, Component, Home, X, Sparkles,
   Eye, EyeOff, Lock, Unlock, ChevronRight, ChevronDown, Keyboard, Info,
-  Play, Link, Unlink, Ruler as RulerIcon
+  Play, Link, Unlink, Ruler as RulerIcon, MoreHorizontal, Copy, Trash2,
+  Edit3, ExternalLink, FolderPlus, RotateCw, Group, Ungroup
 } from "lucide-react";
 import ComponentExplainer from "../ComponentExplainer";
 import HomeSidebar from "./HomeSidebar";
@@ -59,22 +60,31 @@ const WorkspaceCanvas = () => {
   const [pages, setPages] = useState([{ id: 1, name: "Page 1", active: true }]);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
-  // Snap guides
   const [activeSnapGuides, setActiveSnapGuides] = useState<SnapGuide[]>([]);
-  // Prototyping
   const [prototypeMode, setPrototypeMode] = useState(false);
   const [prototypeLinks, setPrototypeLinks] = useState<PrototypeLink[]>([]);
   const [linkingFrom, setLinkingFrom] = useState<number | null>(null);
   const [previewMode, setPreviewMode] = useState(false);
   const [previewCurrentFrame, setPreviewCurrentFrame] = useState<number | null>(null);
   const [previewTransition, setPreviewTransition] = useState<string | null>(null);
-
   const [gridSize, setGridSize] = useState(40);
   const [gridStyle, setGridStyle] = useState<"lines" | "dots" | "cross">("lines");
   const [isDragOver, setIsDragOver] = useState(false);
+  // Page context menu
+  const [pageContextMenu, setPageContextMenu] = useState<{ pageId: number; x: number; y: number } | null>(null);
+  const [renamingPageId, setRenamingPageId] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  // Rotation handle
+  const [rotating, setRotating] = useState<{ id: number; startAngle: number; startRotation: number } | null>(null);
+  // Bezier editing
+  const [editingBezier, setEditingBezier] = useState<number | null>(null);
+  const [draggingCP, setDraggingCP] = useState<{ pointIndex: number; cpType: "cp1" | "cp2" } | null>(null);
+  // Multi-select for grouping
+  const [multiSelect, setMultiSelect] = useState<number[]>([]);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const findInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (selectedId !== null) setLastSelectedId(selectedId);
