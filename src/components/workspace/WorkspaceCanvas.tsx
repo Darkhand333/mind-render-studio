@@ -755,6 +755,16 @@ const WorkspaceCanvas = () => {
       }
       case "Pen": case "Pencil": case "Brush":
         if (el.points && el.points.length > 1) {
+          // Support bezier curves if controlPoints exist
+          if (el.controlPoints && el.controlPoints.length === el.points.length) {
+            let d = `M${el.points[0].x},${el.points[0].y}`;
+            for (let i = 1; i < el.points.length; i++) {
+              const cp = el.controlPoints[i - 1];
+              const p = el.points[i];
+              d += ` C${cp.cp2x},${cp.cp2y} ${el.controlPoints[i].cp1x},${el.controlPoints[i].cp1y} ${p.x},${p.y}`;
+            }
+            return <path d={d} fill="none" stroke={el.strokeColor} strokeWidth={el.strokeWidth} strokeLinecap="round" strokeLinejoin="round" />;
+          }
           const d = el.points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
           return <path d={d} fill="none" stroke={el.strokeColor} strokeWidth={el.strokeWidth} strokeLinecap="round" strokeLinejoin="round" />;
         }
