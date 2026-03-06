@@ -608,7 +608,85 @@ const WorkspaceCanvas = () => {
     setElements(prev => [...prev, newFrame]);
     setSelectedId(newFrame.id);
     setLeftSidebarView("workspace");
+    setProjectName(name);
   };
+
+  // Handle template selection from TemplatePickerModal
+  const handleTemplateSelect = (template: { name: string; width: number; height: number; type: string; elements?: any[] }) => {
+    pushHistory();
+    setProjectName(template.name);
+    const baseElements: CanvasElement[] = [];
+
+    if (template.elements && template.elements.length > 0) {
+      template.elements.forEach((el: any) => {
+        baseElements.push({
+          id: nextId++, type: el.type || "Rectangle",
+          x: el.x ?? 100, y: el.y ?? 100,
+          w: el.w ?? template.width, h: el.h ?? template.height,
+          label: el.label || template.name,
+          fillColor: el.fillColor || "hsl(263, 70%, 58%)",
+          strokeColor: el.strokeColor || "hsl(263, 70%, 58%)",
+          strokeWidth: el.strokeWidth ?? 1,
+          opacity: el.opacity ?? 100, rotation: 0,
+          cornerRadius: el.cornerRadius ?? 0,
+          visible: true, locked: false,
+          text: el.text, fontSize: el.fontSize, fontWeight: el.fontWeight, fontFamily: el.fontFamily || "Inter", textAlign: el.textAlign || "left",
+        });
+      });
+    } else {
+      baseElements.push({
+        id: nextId++, type: "Frame",
+        x: 100, y: 100,
+        w: template.width > 2000 ? template.width / 2 : template.width,
+        h: template.height > 2000 ? template.height / 2 : template.height,
+        label: template.name, fillColor: "#1a1a2e", strokeColor: "hsl(263, 70%, 58%)", strokeWidth: 1,
+        opacity: 100, rotation: 0, cornerRadius: 0, visible: true, locked: false,
+      });
+    }
+
+    setElements(prev => [...prev, ...baseElements]);
+    if (baseElements.length > 0) setSelectedId(baseElements[0].id);
+    setLeftSidebarView("workspace");
+  };
+
+  // Handle voice commands from VoiceCommandModal
+  const handleVoiceCommand = useCallback((cmd: string) => {
+    if (cmd.startsWith("draw:")) {
+      const shape = cmd.split(":")[1];
+      const color = defaultColors[Math.floor(Math.random() * defaultColors.length)];
+      const shapeMap: Record<string, string> = {
+        rectangle: "Rectangle", ellipse: "Ellipse", text: "Text", frame: "Frame", star: "Star",
+      };
+      const type = shapeMap[shape] || "Rectangle";
+      pushHistory();
+      const newEl: CanvasElement = {
+        id: nextId++, type, x: 200 + Math.random() * 300, y: 200 + Math.random() * 200,
+        w: type === "Text" ? 200 : 120, h: type === "Text" ? 40 : 120,
+        label: `${type} ${nextId}`, fillColor: color, strokeColor: color, strokeWidth: 2,
+        opacity: 100, rotation: 0, cornerRadius: type === "Rectangle" ? 8 : 0,
+        visible: true, locked: false,
+        ...(type === "Text" ? { text: "Hello World", fontSize: 24, fontWeight: "400", fontFamily: "Inter", textAlign: "left" } : {}),
+      };
+      setElements(prev => [...prev, newEl]);
+      setSelectedId(newEl.id);
+    } else if (cmd === "zoom:in") {
+      setZoom(z => Math.min(z + 25, 400));
+    } else if (cmd === "zoom:out") {
+      setZoom(z => Math.max(z - 25, 25));
+    } else if (cmd === "action:undo") {
+      handleUndo();
+    } else if (cmd === "action:redo") {
+      handleRedo();
+    } else if (cmd === "action:delete") {
+      handleDelete();
+    } else if (cmd === "action:export") {
+      setShowExportModal(true);
+    } else if (cmd === "action:save") {
+      saveNow();
+    } else if (cmd === "action:selectAll") {
+      setMultiSelect(elements.map(el => el.id));
+    }
+  }, [elements, pushHistory, saveNow]);
 
   // Prototype link management
   const addPrototypeLink = (fromId: number, toId: number) => {
