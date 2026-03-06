@@ -33,7 +33,6 @@ const GlassNavbar = () => {
 
   const handleVoiceCommand = (transcript: string) => {
     console.log("Voice command:", transcript);
-    // Could route commands to chatbot or workspace
   };
 
   return (

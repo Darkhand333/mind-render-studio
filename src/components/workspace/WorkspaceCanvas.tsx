@@ -8,12 +8,15 @@ import {
   FileText, File, Search, Package, Component, Home, X, Sparkles,
   Eye, EyeOff, Lock, Unlock, ChevronRight, ChevronDown, Keyboard, Info,
   Play, Link, Unlink, Ruler as RulerIcon, MoreHorizontal, Copy, Trash2,
-  Edit3, ExternalLink, FolderPlus, RotateCw, Group, Ungroup
+  Edit3, ExternalLink, FolderPlus, RotateCw, Group, Ungroup, Save, Cloud, LayoutTemplate
 } from "lucide-react";
 import ComponentExplainer from "../ComponentExplainer";
 import HomeSidebar from "./HomeSidebar";
 import RightPanel from "./RightPanel";
+import TemplatePickerModal from "./TemplatePickerModal";
 import { CanvasElement, LeftTab, defaultColors, toolGroups } from "./types";
+import { useProjectAutoSave } from "@/hooks/useProjectAutoSave";
+import { useAuth } from "@/contexts/AuthContext";
 
 const iconMap: Record<string, any> = {
   MousePointer, Hand, Scale, Square, Circle, Triangle, Diamond, Star, Hexagon,
@@ -31,9 +34,13 @@ const SNAP_THRESHOLD = 6;
 const RULER_SIZE = 20;
 
 const WorkspaceCanvas = () => {
+  const { user } = useAuth();
   const [activeTool, setActiveTool] = useState("Select");
   const [showGrid, setShowGrid] = useState(true);
   const [showRulers, setShowRulers] = useState(true);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [projectName, setProjectName] = useState("Untitled");
+  const [showFirstTime, setShowFirstTime] = useState(true);
   const [zoom, setZoom] = useState(100);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [panning, setPanning] = useState(false);
@@ -85,6 +92,21 @@ const WorkspaceCanvas = () => {
   const canvasRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-save
+  const { saving, lastSaved, saveNow, rename: renameProject, loadProject } = useProjectAutoSave(
+    projectName,
+    { elements, pages, canvasSettings: { zoom, panOffset, showGrid, gridSize, gridStyle } }
+  );
+
+  // Show template picker on first load if no elements
+  useEffect(() => {
+    if (showFirstTime && elements.length === 0 && user) {
+      const timer = setTimeout(() => setShowTemplatePicker(true), 600);
+      setShowFirstTime(false);
+      return () => clearTimeout(timer);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (selectedId !== null) setLastSelectedId(selectedId);
@@ -586,7 +608,85 @@ const WorkspaceCanvas = () => {
     setElements(prev => [...prev, newFrame]);
     setSelectedId(newFrame.id);
     setLeftSidebarView("workspace");
+    setProjectName(name);
   };
+
+  // Handle template selection from TemplatePickerModal
+  const handleTemplateSelect = (template: { name: string; width: number; height: number; type: string; elements?: any[] }) => {
+    pushHistory();
+    setProjectName(template.name);
+    const baseElements: CanvasElement[] = [];
+
+    if (template.elements && template.elements.length > 0) {
+      template.elements.forEach((el: any) => {
+        baseElements.push({
+          id: nextId++, type: el.type || "Rectangle",
+          x: el.x ?? 100, y: el.y ?? 100,
+          w: el.w ?? template.width, h: el.h ?? template.height,
+          label: el.label || template.name,
+          fillColor: el.fillColor || "hsl(263, 70%, 58%)",
+          strokeColor: el.strokeColor || "hsl(263, 70%, 58%)",
+          strokeWidth: el.strokeWidth ?? 1,
+          opacity: el.opacity ?? 100, rotation: 0,
+          cornerRadius: el.cornerRadius ?? 0,
+          visible: true, locked: false,
+          text: el.text, fontSize: el.fontSize, fontWeight: el.fontWeight, fontFamily: el.fontFamily || "Inter", textAlign: el.textAlign || "left",
+        });
+      });
+    } else {
+      baseElements.push({
+        id: nextId++, type: "Frame",
+        x: 100, y: 100,
+        w: template.width > 2000 ? template.width / 2 : template.width,
+        h: template.height > 2000 ? template.height / 2 : template.height,
+        label: template.name, fillColor: "#1a1a2e", strokeColor: "hsl(263, 70%, 58%)", strokeWidth: 1,
+        opacity: 100, rotation: 0, cornerRadius: 0, visible: true, locked: false,
+      });
+    }
+
+    setElements(prev => [...prev, ...baseElements]);
+    if (baseElements.length > 0) setSelectedId(baseElements[0].id);
+    setLeftSidebarView("workspace");
+  };
+
+  // Handle voice commands from VoiceCommandModal
+  const handleVoiceCommand = useCallback((cmd: string) => {
+    if (cmd.startsWith("draw:")) {
+      const shape = cmd.split(":")[1];
+      const color = defaultColors[Math.floor(Math.random() * defaultColors.length)];
+      const shapeMap: Record<string, string> = {
+        rectangle: "Rectangle", ellipse: "Ellipse", text: "Text", frame: "Frame", star: "Star",
+      };
+      const type = shapeMap[shape] || "Rectangle";
+      pushHistory();
+      const newEl: CanvasElement = {
+        id: nextId++, type, x: 200 + Math.random() * 300, y: 200 + Math.random() * 200,
+        w: type === "Text" ? 200 : 120, h: type === "Text" ? 40 : 120,
+        label: `${type} ${nextId}`, fillColor: color, strokeColor: color, strokeWidth: 2,
+        opacity: 100, rotation: 0, cornerRadius: type === "Rectangle" ? 8 : 0,
+        visible: true, locked: false,
+        ...(type === "Text" ? { text: "Hello World", fontSize: 24, fontWeight: "400", fontFamily: "Inter", textAlign: "left" } : {}),
+      };
+      setElements(prev => [...prev, newEl]);
+      setSelectedId(newEl.id);
+    } else if (cmd === "zoom:in") {
+      setZoom(z => Math.min(z + 25, 400));
+    } else if (cmd === "zoom:out") {
+      setZoom(z => Math.max(z - 25, 25));
+    } else if (cmd === "action:undo") {
+      handleUndo();
+    } else if (cmd === "action:redo") {
+      handleRedo();
+    } else if (cmd === "action:delete") {
+      handleDelete();
+    } else if (cmd === "action:export") {
+      setShowExportModal(true);
+    } else if (cmd === "action:save") {
+      saveNow();
+    } else if (cmd === "action:selectAll") {
+      setMultiSelect(elements.map(el => el.id));
+    }
+  }, [elements, pushHistory, saveNow]);
 
   // Prototype link management
   const addPrototypeLink = (fromId: number, toId: number) => {
@@ -883,6 +983,32 @@ const WorkspaceCanvas = () => {
             <div className="w-px h-4 bg-border/30 mx-0.5" />
           </div>
         ))}
+
+        {/* Project name + save status */}
+        <div className="flex items-center gap-2 mx-2">
+          <input
+            value={projectName}
+            onChange={(e) => { setProjectName(e.target.value); renameProject(e.target.value); }}
+            className="bg-transparent text-xs font-semibold text-foreground outline-none w-28 truncate hover:bg-secondary/40 rounded px-1.5 py-0.5 focus:bg-secondary/60 transition-colors"
+            title="Project name (click to rename)"
+          />
+          <div className="flex items-center gap-1" title={lastSaved ? `Saved ${lastSaved.toLocaleTimeString()}` : "Not saved yet"}>
+            {saving ? (
+              <Cloud className="w-3 h-3 text-muted-foreground animate-pulse" />
+            ) : lastSaved ? (
+              <Cloud className="w-3 h-3 text-primary" />
+            ) : (
+              <Save className="w-3 h-3 text-muted-foreground" />
+            )}
+            <span className="text-[9px] text-muted-foreground">{saving ? "Saving..." : lastSaved ? "Saved" : ""}</span>
+          </div>
+        </div>
+
+        {/* Templates button */}
+        <button onClick={() => setShowTemplatePicker(true)} title="Templates"
+          className="p-1.5 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
+          <LayoutTemplate className="w-4 h-4" />
+        </button>
 
         <div className="flex-1" />
 
@@ -1615,6 +1741,12 @@ const WorkspaceCanvas = () => {
           </motion.div>
         )}
       </AnimatePresence>
+      {/* Template Picker */}
+      <TemplatePickerModal
+        open={showTemplatePicker}
+        onClose={() => setShowTemplatePicker(false)}
+        onSelect={handleTemplateSelect}
+      />
     </div>
   );
 };

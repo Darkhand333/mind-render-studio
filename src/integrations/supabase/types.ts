@@ -68,6 +68,42 @@ export type Database = {
         }
         Relationships: []
       }
+      projects: {
+        Row: {
+          canvas_settings: Json | null
+          created_at: string
+          elements: Json
+          id: string
+          name: string
+          pages: Json
+          project_type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          canvas_settings?: Json | null
+          created_at?: string
+          elements?: Json
+          id?: string
+          name?: string
+          pages?: Json
+          project_type?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          canvas_settings?: Json | null
+          created_at?: string
+          elements?: Json
+          id?: string
+          name?: string
+          pages?: Json
+          project_type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
