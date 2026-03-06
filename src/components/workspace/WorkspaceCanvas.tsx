@@ -984,6 +984,32 @@ const WorkspaceCanvas = () => {
           </div>
         ))}
 
+        {/* Project name + save status */}
+        <div className="flex items-center gap-2 mx-2">
+          <input
+            value={projectName}
+            onChange={(e) => { setProjectName(e.target.value); renameProject(e.target.value); }}
+            className="bg-transparent text-xs font-semibold text-foreground outline-none w-28 truncate hover:bg-secondary/40 rounded px-1.5 py-0.5 focus:bg-secondary/60 transition-colors"
+            title="Project name (click to rename)"
+          />
+          <div className="flex items-center gap-1" title={lastSaved ? `Saved ${lastSaved.toLocaleTimeString()}` : "Not saved yet"}>
+            {saving ? (
+              <Cloud className="w-3 h-3 text-muted-foreground animate-pulse" />
+            ) : lastSaved ? (
+              <Cloud className="w-3 h-3 text-primary" />
+            ) : (
+              <Save className="w-3 h-3 text-muted-foreground" />
+            )}
+            <span className="text-[9px] text-muted-foreground">{saving ? "Saving..." : lastSaved ? "Saved" : ""}</span>
+          </div>
+        </div>
+
+        {/* Templates button */}
+        <button onClick={() => setShowTemplatePicker(true)} title="Templates"
+          className="p-1.5 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
+          <LayoutTemplate className="w-4 h-4" />
+        </button>
+
         <div className="flex-1" />
 
         {/* Prototype toggle */}
@@ -1715,6 +1741,12 @@ const WorkspaceCanvas = () => {
           </motion.div>
         )}
       </AnimatePresence>
+      {/* Template Picker */}
+      <TemplatePickerModal
+        open={showTemplatePicker}
+        onClose={() => setShowTemplatePicker(false)}
+        onSelect={handleTemplateSelect}
+      />
     </div>
   );
 };
