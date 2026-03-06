@@ -93,6 +93,21 @@ const WorkspaceCanvas = () => {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
 
+  // Auto-save
+  const { saving, lastSaved, saveNow, rename: renameProject, loadProject } = useProjectAutoSave(
+    projectName,
+    { elements, pages, canvasSettings: { zoom, panOffset, showGrid, gridSize, gridStyle } }
+  );
+
+  // Show template picker on first load if no elements
+  useEffect(() => {
+    if (showFirstTime && elements.length === 0 && user) {
+      const timer = setTimeout(() => setShowTemplatePicker(true), 600);
+      setShowFirstTime(false);
+      return () => clearTimeout(timer);
+    }
+  }, [user]);
+
   useEffect(() => {
     if (selectedId !== null) setLastSelectedId(selectedId);
   }, [selectedId]);
