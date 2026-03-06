@@ -8,12 +8,15 @@ import {
   FileText, File, Search, Package, Component, Home, X, Sparkles,
   Eye, EyeOff, Lock, Unlock, ChevronRight, ChevronDown, Keyboard, Info,
   Play, Link, Unlink, Ruler as RulerIcon, MoreHorizontal, Copy, Trash2,
-  Edit3, ExternalLink, FolderPlus, RotateCw, Group, Ungroup
+  Edit3, ExternalLink, FolderPlus, RotateCw, Group, Ungroup, Save, Cloud, LayoutTemplate
 } from "lucide-react";
 import ComponentExplainer from "../ComponentExplainer";
 import HomeSidebar from "./HomeSidebar";
 import RightPanel from "./RightPanel";
+import TemplatePickerModal from "./TemplatePickerModal";
 import { CanvasElement, LeftTab, defaultColors, toolGroups } from "./types";
+import { useProjectAutoSave } from "@/hooks/useProjectAutoSave";
+import { useAuth } from "@/contexts/AuthContext";
 
 const iconMap: Record<string, any> = {
   MousePointer, Hand, Scale, Square, Circle, Triangle, Diamond, Star, Hexagon,
@@ -31,9 +34,13 @@ const SNAP_THRESHOLD = 6;
 const RULER_SIZE = 20;
 
 const WorkspaceCanvas = () => {
+  const { user } = useAuth();
   const [activeTool, setActiveTool] = useState("Select");
   const [showGrid, setShowGrid] = useState(true);
   const [showRulers, setShowRulers] = useState(true);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [projectName, setProjectName] = useState("Untitled");
+  const [showFirstTime, setShowFirstTime] = useState(true);
   const [zoom, setZoom] = useState(100);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
   const [panning, setPanning] = useState(false);
