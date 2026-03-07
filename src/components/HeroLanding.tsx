@@ -19,29 +19,10 @@ const stagger = {
 };
 
 const HeroLanding = () => {
-  const [listening, setListening] = useState(false);
-  const [transcript, setTranscript] = useState("");
-
-  const toggleVoice = useCallback(() => {
-    if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
-      alert("Voice recognition is not supported in this browser.");
-      return;
-    }
-    if (listening) { setListening(false); return; }
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.onresult = (event: any) => {
-      const text = event.results[0][0].transcript;
-      setTranscript(text);
-      setListening(false);
-    };
-    recognition.onend = () => setListening(false);
-    recognition.onerror = () => setListening(false);
-    setListening(true);
-    recognition.start();
-  }, [listening]);
+  const handleVoiceClick = useCallback(() => {
+    // Dispatch custom event to open navbar voice modal
+    window.dispatchEvent(new CustomEvent("open-voice-command"));
+  }, []);
 
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center px-6 pt-20">
@@ -86,15 +67,11 @@ const HeroLanding = () => {
             <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </Link>
           <button
-            onClick={toggleVoice}
-            className={`inline-flex items-center gap-2 px-8 py-3.5 rounded-xl font-semibold transition-all duration-300 ${
-              listening
-                ? "gradient-purple text-primary-foreground neon-glow animate-pulse"
-                : "glass text-foreground hover:bg-secondary/80"
-            }`}
+            onClick={handleVoiceClick}
+            className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl font-semibold transition-all duration-300 glass text-foreground hover:bg-secondary/80"
           >
-            {listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-            {listening ? "Listening..." : "Voice Command"}
+            <Mic className="w-4 h-4" />
+            Voice Command
           </button>
           <Link
             to="/ui-score"
@@ -103,11 +80,6 @@ const HeroLanding = () => {
             Evaluate UI
           </Link>
         </motion.div>
-        {transcript && (
-          <motion.div variants={stagger.item} className="mt-4 px-4 py-2 rounded-lg glass text-sm text-muted-foreground">
-            <span className="text-primary font-medium">Voice:</span> "{transcript}"
-          </motion.div>
-        )}
       </motion.div>
 
       {/* Quick intro section */}

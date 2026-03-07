@@ -38,18 +38,25 @@ const VoiceCommandModal = ({ open, onClose, onCommand }: VoiceCommandModalProps)
 
     if (lower.includes("create") || lower.includes("new project") || lower.includes("make")) {
       if (lower.includes("website") || lower.includes("landing")) {
-        reply = "Creating a website template for you. What kind of website — portfolio, e-commerce, or blog?";
+        reply = "Creating a website layout on the canvas now.";
+        onCommand("template:web-landing");
       } else if (lower.includes("presentation") || lower.includes("slides") || lower.includes("pitch")) {
-        reply = "Opening a presentation template. Standard 16:9 or 4:3 aspect ratio?";
+        reply = "Creating a presentation template.";
+        onCommand("template:sl-pitch");
       } else if (lower.includes("logo")) {
-        reply = "Starting a logo project. Square or wide format?";
+        reply = "Starting a logo canvas.";
+        onCommand("template:logo");
       } else if (lower.includes("mobile") || lower.includes("app")) {
-        reply = "Creating a mobile app wireframe. iPhone or Android dimensions?";
+        reply = "Creating a mobile app wireframe.";
+        onCommand("template:mob-ios");
+      } else if (lower.includes("brainstorm") || lower.includes("whiteboard")) {
+        reply = "Opening a brainstorming board.";
+        onCommand("template:wb-brainstorm");
       } else {
-        reply = "What would you like to create? A website, presentation, logo, or mobile app?";
+        reply = "What would you like to create? Say: website, presentation, logo, mobile app, or brainstorm.";
       }
     } else if (lower.includes("draw") || lower.includes("add")) {
-      if (lower.includes("rectangle") || lower.includes("box")) {
+      if (lower.includes("rectangle") || lower.includes("box") || lower.includes("square")) {
         reply = "Drawing a rectangle on the canvas.";
         onCommand("draw:rectangle");
       } else if (lower.includes("circle") || lower.includes("ellipse")) {
@@ -64,8 +71,38 @@ const VoiceCommandModal = ({ open, onClose, onCommand }: VoiceCommandModalProps)
       } else if (lower.includes("star")) {
         reply = "Adding a star shape.";
         onCommand("draw:star");
+      } else if (lower.includes("triangle")) {
+        reply = "Adding a triangle.";
+        onCommand("draw:triangle");
+      } else if (lower.includes("button")) {
+        reply = "Adding a button component.";
+        onCommand("draw:button");
+      } else if (lower.includes("card")) {
+        reply = "Adding a card component.";
+        onCommand("draw:card");
+      } else if (lower.includes("input") || lower.includes("field")) {
+        reply = "Adding an input field.";
+        onCommand("draw:input");
+      } else if (lower.includes("image") || lower.includes("photo")) {
+        reply = "Adding an image placeholder.";
+        onCommand("draw:image");
+      } else if (lower.includes("heading") || lower.includes("title")) {
+        reply = "Adding a heading.";
+        onCommand("draw:heading");
+      } else if (lower.includes("paragraph") || lower.includes("body")) {
+        reply = "Adding a paragraph text.";
+        onCommand("draw:paragraph");
+      } else if (lower.includes("nav") || lower.includes("navigation") || lower.includes("menu")) {
+        reply = "Adding a navigation bar.";
+        onCommand("draw:navbar");
+      } else if (lower.includes("hero")) {
+        reply = "Adding a hero section.";
+        onCommand("draw:hero");
+      } else if (lower.includes("footer")) {
+        reply = "Adding a footer section.";
+        onCommand("draw:footer");
       } else {
-        reply = "What shape would you like? Rectangle, circle, star, text, or frame?";
+        reply = "What shape would you like? Rectangle, circle, star, text, triangle, button, card, heading, or navbar?";
       }
     } else if (lower.includes("zoom in")) {
       reply = "Zooming in.";
@@ -91,10 +128,13 @@ const VoiceCommandModal = ({ open, onClose, onCommand }: VoiceCommandModalProps)
     } else if (lower.includes("save")) {
       reply = "Saving your project.";
       onCommand("action:save");
+    } else if (lower.includes("template")) {
+      reply = "Opening templates.";
+      onCommand("action:templates");
     } else if (lower.includes("help")) {
-      reply = "You can say: create a website, draw a rectangle, add text, zoom in, undo, export, or save. What would you like to do?";
+      reply = "You can say: create a website, draw a rectangle, add a button, add a navbar, zoom in, undo, export, or save. What would you like to do?";
     } else {
-      reply = `I heard "${cmd}". Try saying: create a website, draw a rectangle, add text, zoom in, or help.`;
+      reply = `I heard "${cmd}". Try saying: create a website, draw a rectangle, add a button, add text, zoom in, or help.`;
     }
 
     setResponse(reply);
@@ -105,6 +145,12 @@ const VoiceCommandModal = ({ open, onClose, onCommand }: VoiceCommandModalProps)
     if (!supported) {
       setResponse("Voice recognition is not supported in this browser. Please use Chrome or Edge.");
       return;
+    }
+
+    // Stop any existing recognition first
+    if (recognitionRef.current) {
+      try { recognitionRef.current.abort(); } catch (e) {}
+      recognitionRef.current = null;
     }
 
     try {
@@ -136,18 +182,24 @@ const VoiceCommandModal = ({ open, onClose, onCommand }: VoiceCommandModalProps)
       };
 
       recognition.onend = () => {
-        setListening(false);
+        // Auto-restart if still supposed to be listening
+        if (recognitionRef.current === recognition) {
+          try { recognition.start(); } catch (e) { setListening(false); }
+        }
       };
 
       recognition.onerror = (e: any) => {
         console.error("Speech recognition error:", e.error);
-        setListening(false);
         if (e.error === "not-allowed") {
+          setListening(false);
           setResponse("Microphone access denied. Please allow microphone access in your browser settings.");
         } else if (e.error === "no-speech") {
-          setResponse("No speech detected. Please try again.");
+          // Don't stop - just inform
+          setResponse("No speech detected. Try speaking louder or closer to the mic.");
+        } else if (e.error === "aborted") {
+          // Intentional abort, do nothing
         } else {
-          setResponse(`Error: ${e.error}. Please try again.`);
+          setResponse(`Error: ${e.error}. Retrying...`);
         }
       };
 
@@ -162,7 +214,11 @@ const VoiceCommandModal = ({ open, onClose, onCommand }: VoiceCommandModalProps)
   }, [supported, processCommand]);
 
   const stopListening = useCallback(() => {
-    recognitionRef.current?.stop();
+    const rec = recognitionRef.current;
+    recognitionRef.current = null;
+    if (rec) {
+      try { rec.abort(); } catch (e) {}
+    }
     setListening(false);
   }, []);
 
@@ -292,6 +348,8 @@ const VoiceCommandModal = ({ open, onClose, onCommand }: VoiceCommandModalProps)
                 {[
                   "Create a website",
                   "Draw a rectangle",
+                  "Add a button",
+                  "Add a navbar",
                   "Add text",
                   "Zoom in",
                   "Undo",
