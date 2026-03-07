@@ -31,6 +31,13 @@ const GlassNavbar = () => {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  // Listen for custom event from home page voice button
+  useEffect(() => {
+    const handler = () => setVoiceOpen(true);
+    window.addEventListener("open-voice-command", handler);
+    return () => window.removeEventListener("open-voice-command", handler);
+  }, []);
+
   const handleVoiceCommand = (transcript: string) => {
     console.log("Voice command:", transcript);
   };
