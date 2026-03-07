@@ -99,14 +99,7 @@ const WorkspaceCanvas = () => {
     { elements, pages, canvasSettings: { zoom, panOffset, showGrid, gridSize, gridStyle } }
   );
 
-  // Show template picker on first load if no elements
-  useEffect(() => {
-    if (showFirstTime && elements.length === 0 && user) {
-      const timer = setTimeout(() => setShowTemplatePicker(true), 600);
-      setShowFirstTime(false);
-      return () => clearTimeout(timer);
-    }
-  }, [user]);
+  // No auto-open template picker - user clicks the template button to open it
 
   useEffect(() => {
     if (selectedId !== null) setLastSelectedId(selectedId);
@@ -654,21 +647,41 @@ const WorkspaceCanvas = () => {
     if (cmd.startsWith("draw:")) {
       const shape = cmd.split(":")[1];
       const color = defaultColors[Math.floor(Math.random() * defaultColors.length)];
-      const shapeMap: Record<string, string> = {
-        rectangle: "Rectangle", ellipse: "Ellipse", text: "Text", frame: "Frame", star: "Star",
+      // Extended shape/component map
+      const shapeMap: Record<string, { type: string; w: number; h: number; cornerRadius: number; text?: string; fontSize?: number; fontWeight?: string; fillColor?: string }> = {
+        rectangle: { type: "Rectangle", w: 160, h: 120, cornerRadius: 8 },
+        ellipse: { type: "Ellipse", w: 120, h: 120, cornerRadius: 0 },
+        text: { type: "Text", w: 200, h: 40, cornerRadius: 0, text: "Hello World", fontSize: 24, fontWeight: "400" },
+        frame: { type: "Frame", w: 400, h: 300, cornerRadius: 0 },
+        star: { type: "Star", w: 100, h: 100, cornerRadius: 0 },
+        triangle: { type: "Triangle", w: 120, h: 120, cornerRadius: 0 },
+        button: { type: "Rectangle", w: 140, h: 44, cornerRadius: 10, text: "Button", fontSize: 14, fontWeight: "600", fillColor: "hsl(263, 70%, 58%)" },
+        card: { type: "Rectangle", w: 280, h: 180, cornerRadius: 12 },
+        input: { type: "Rectangle", w: 240, h: 40, cornerRadius: 6 },
+        image: { type: "Rectangle", w: 200, h: 200, cornerRadius: 8 },
+        heading: { type: "Text", w: 400, h: 50, cornerRadius: 0, text: "Heading", fontSize: 36, fontWeight: "700" },
+        paragraph: { type: "Text", w: 400, h: 80, cornerRadius: 0, text: "Lorem ipsum dolor sit amet, consectetur adipiscing elit.", fontSize: 16, fontWeight: "400" },
+        navbar: { type: "Rectangle", w: 800, h: 60, cornerRadius: 0 },
+        hero: { type: "Frame", w: 800, h: 400, cornerRadius: 0 },
+        footer: { type: "Rectangle", w: 800, h: 80, cornerRadius: 0 },
       };
-      const type = shapeMap[shape] || "Rectangle";
+      const config = shapeMap[shape] || shapeMap.rectangle;
+      const fc = config.fillColor || color;
       pushHistory();
       const newEl: CanvasElement = {
-        id: nextId++, type, x: 200 + Math.random() * 300, y: 200 + Math.random() * 200,
-        w: type === "Text" ? 200 : 120, h: type === "Text" ? 40 : 120,
-        label: `${type} ${nextId}`, fillColor: color, strokeColor: color, strokeWidth: 2,
-        opacity: 100, rotation: 0, cornerRadius: type === "Rectangle" ? 8 : 0,
+        id: nextId++, type: config.type, x: 200 + Math.random() * 200, y: 200 + Math.random() * 150,
+        w: config.w, h: config.h,
+        label: `${shape.charAt(0).toUpperCase() + shape.slice(1)} ${nextId}`, fillColor: fc, strokeColor: fc, strokeWidth: 2,
+        opacity: 100, rotation: 0, cornerRadius: config.cornerRadius,
         visible: true, locked: false,
-        ...(type === "Text" ? { text: "Hello World", fontSize: 24, fontWeight: "400", fontFamily: "Inter", textAlign: "left" } : {}),
+        ...(config.text ? { text: config.text, fontSize: config.fontSize, fontWeight: config.fontWeight, fontFamily: "Inter", textAlign: "left" } : {}),
       };
       setElements(prev => [...prev, newEl]);
       setSelectedId(newEl.id);
+      setActiveTool("Select");
+    } else if (cmd.startsWith("template:")) {
+      // Voice triggered template - open template picker and auto-select
+      setShowTemplatePicker(true);
     } else if (cmd === "zoom:in") {
       setZoom(z => Math.min(z + 25, 400));
     } else if (cmd === "zoom:out") {
@@ -685,6 +698,8 @@ const WorkspaceCanvas = () => {
       saveNow();
     } else if (cmd === "action:selectAll") {
       setMultiSelect(elements.map(el => el.id));
+    } else if (cmd === "action:templates") {
+      setShowTemplatePicker(true);
     }
   }, [elements, pushHistory, saveNow]);
 
