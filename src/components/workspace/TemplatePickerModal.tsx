@@ -232,7 +232,7 @@ const TemplatePreview = ({ template }: { template: typeof templates[0] }) => {
               <ellipse key={i} cx={el.x + (el.w || 100) / 2} cy={el.y + (el.h || 100) / 2}
                 rx={(el.w || 100) / 2} ry={(el.h || 100) / 2}
                 fill={el.fillColor || "transparent"} stroke={el.strokeColor || "transparent"}
-                strokeWidth={el.strokeWidth || 0} rx2={el.cornerRadius || 0} />
+                strokeWidth={el.strokeWidth || 0} />
             );
           }
           if (el.type === "Diamond") {
