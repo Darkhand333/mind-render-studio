@@ -523,10 +523,17 @@ const WorkspaceCanvas = () => {
     if (resizing) { setResizing(null); return; }
     if (drawing && drawStart) {
       const pos = getCanvasPos(e);
+      const rawW = Math.abs(pos.x - drawStart.x);
+      const rawH = Math.abs(pos.y - drawStart.y);
+      // Only create element if user actually dragged (not just clicked)
+      if (rawW < 5 && rawH < 5) {
+        setDrawing(false); setDrawStart(null); setDrawCurrent(null);
+        return;
+      }
       const x = Math.min(drawStart.x, pos.x);
       const y = Math.min(drawStart.y, pos.y);
-      const w = Math.max(Math.abs(pos.x - drawStart.x), 20);
-      const h = Math.max(Math.abs(pos.y - drawStart.y), 20);
+      const w = Math.max(rawW, 20);
+      const h = Math.max(rawH, 20);
       pushHistory();
       const color = defaultColors[Math.floor(Math.random() * defaultColors.length)];
       const newEl: CanvasElement = {
