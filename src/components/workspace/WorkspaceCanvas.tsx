@@ -93,13 +93,43 @@ const WorkspaceCanvas = () => {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
 
+  // Callback to load saved project data into state
+  const handleLoadProject = useCallback((data: { elements: any[]; pages: any[]; canvasSettings?: any; name: string }) => {
+    if (data.elements && data.elements.length > 0) {
+      setElements(data.elements);
+      // Update nextId to avoid collisions
+      const maxId = Math.max(...data.elements.map((e: any) => e.id || 0), 0);
+      nextId = maxId + 1;
+    }
+    if (data.pages && data.pages.length > 0) {
+      setPages(data.pages);
+    }
+    if (data.canvasSettings) {
+      if (data.canvasSettings.zoom) setZoom(data.canvasSettings.zoom);
+      if (data.canvasSettings.panOffset) setPanOffset(data.canvasSettings.panOffset);
+      if (data.canvasSettings.showGrid !== undefined) setShowGrid(data.canvasSettings.showGrid);
+      if (data.canvasSettings.gridSize) setGridSize(data.canvasSettings.gridSize);
+      if (data.canvasSettings.gridStyle) setGridStyle(data.canvasSettings.gridStyle);
+    }
+    if (data.name) setProjectName(data.name);
+  }, []);
+
   // Auto-save
   const { saving, lastSaved, saveNow, rename: renameProject, loadProject } = useProjectAutoSave(
     projectName,
-    { elements, pages, canvasSettings: { zoom, panOffset, showGrid, gridSize, gridStyle } }
+    { elements, pages, canvasSettings: { zoom, panOffset, showGrid, gridSize, gridStyle } },
+    handleLoadProject
   );
 
-  // No auto-open template picker - user clicks the template button to open it
+  // Listen for voice commands from navbar
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const cmd = (e as CustomEvent).detail;
+      if (cmd) handleVoiceCommand(cmd);
+    };
+    window.addEventListener("voice-command", handler);
+    return () => window.removeEventListener("voice-command", handler);
+  }, [handleVoiceCommand]);
 
   useEffect(() => {
     if (selectedId !== null) setLastSelectedId(selectedId);
