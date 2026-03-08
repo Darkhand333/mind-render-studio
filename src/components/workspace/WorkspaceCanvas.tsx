@@ -194,6 +194,7 @@ const WorkspaceCanvas = () => {
       if ((e.metaKey || e.ctrlKey) && e.key === "y") { handleRedo(); e.preventDefault(); }
       if ((e.metaKey || e.ctrlKey) && e.key === "d") { e.preventDefault(); handleDuplicate(); }
       if ((e.metaKey || e.ctrlKey) && e.key === "g") { e.preventDefault(); handleGroupSelected(); }
+      if ((e.metaKey || e.ctrlKey) && e.key === "a") { e.preventDefault(); setMultiSelect(elements.map(el => el.id)); setSelectedId(null); }
       if (e.key === "Escape") {
         if (previewMode) { setPreviewMode(false); setPreviewCurrentFrame(null); }
         else if (editingBezier) { setEditingBezier(null); }

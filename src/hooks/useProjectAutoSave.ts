@@ -22,6 +22,7 @@ export const useProjectAutoSave = (
   const nameRef = useRef(projectName);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initializedRef = useRef(false);
+  const loadedRef = useRef(false);
 
   dataRef.current = data;
   nameRef.current = projectName;
@@ -55,6 +56,7 @@ export const useProjectAutoSave = (
               name: proj.name || "Untitled",
             });
           }
+          loadedRef.current = true;
           return;
         }
       }
@@ -74,6 +76,7 @@ export const useProjectAutoSave = (
 
       if (newProj) {
         setProjectId(newProj.id);
+        loadedRef.current = true;
         const url = new URL(window.location.href);
         url.searchParams.set("project", newProj.id);
         window.history.replaceState({}, "", url.toString());
@@ -83,18 +86,20 @@ export const useProjectAutoSave = (
     initProject();
   }, [user]);
 
-  // Mark dirty when data changes
+  // Mark dirty when data changes (only after initial load)
+  const elementsJson = JSON.stringify(data.elements);
+  const pagesJson = JSON.stringify(data.pages);
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || !loadedRef.current) return;
     dirtyRef.current = true;
-  }, [data.elements.length, data.pages.length, projectId]);
+  }, [elementsJson, pagesJson, projectId]);
 
-  // Auto-save every 5 seconds if dirty
+  // Auto-save every 5 seconds if dirty and loaded
   useEffect(() => {
     if (!projectId || !user) return;
 
     const interval = setInterval(async () => {
-      if (!dirtyRef.current) return;
+      if (!dirtyRef.current || !loadedRef.current) return;
       dirtyRef.current = false;
       setSaving(true);
 
@@ -122,7 +127,7 @@ export const useProjectAutoSave = (
   }, [projectId, user]);
 
   const saveNow = useCallback(async () => {
-    if (!projectId || !user) return;
+    if (!projectId || !user || !loadedRef.current) return;
     setSaving(true);
     dirtyRef.current = false;
 
