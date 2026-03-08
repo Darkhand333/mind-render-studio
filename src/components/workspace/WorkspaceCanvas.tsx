@@ -564,6 +564,7 @@ const WorkspaceCanvas = () => {
   };
 
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
+    canvasInteractionRef.current = true;
     if (previewMode) return;
     if (activeTool === "Pan") { setPanning(true); setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y }); return; }
     // Only handle clicks on the canvas background itself (not on elements) unless drawing
