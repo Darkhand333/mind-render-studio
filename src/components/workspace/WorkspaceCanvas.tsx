@@ -751,10 +751,42 @@ const WorkspaceCanvas = () => {
 
   // Handle voice commands from VoiceCommandModal
   const handleVoiceCommand = useCallback((cmd: string) => {
-    if (cmd.startsWith("draw:")) {
-      const shape = cmd.split(":")[1];
+    const lower = cmd.toLowerCase().trim();
+
+    const normalizedCmd = (() => {
+      if (lower.includes(":")) return lower;
+
+      if (lower.includes("portfolio")) return "template:web-portfolio";
+      if (lower.includes("landing") || lower.includes("website") || lower.includes("homepage")) return "template:web-landing";
+      if (lower.includes("dashboard")) return "template:web-dashboard";
+      if (lower.includes("e-commerce") || lower.includes("ecommerce") || lower.includes("store")) return "template:web-ecommerce";
+      if (lower.includes("presentation") || lower.includes("slides") || lower.includes("pitch")) return "template:sl-pitch";
+      if (lower.includes("brainstorm") || lower.includes("whiteboard")) return "template:wb-brainstorm";
+
+      if (lower.includes("rectangle") || lower.includes("square") || lower.includes("box")) return "draw:rectangle";
+      if (lower.includes("circle") || lower.includes("ellipse")) return "draw:ellipse";
+      if (lower.includes("button")) return "draw:button";
+      if (lower.includes("navbar") || lower.includes("navigation") || lower.includes("menu")) return "draw:navbar";
+      if (lower.includes("hero")) return "draw:hero";
+      if (lower.includes("footer")) return "draw:footer";
+      if (lower.includes("heading") || lower.includes("title")) return "draw:heading";
+      if (lower.includes("text")) return "draw:text";
+
+      if (lower.includes("select all")) return "action:selectAll";
+      if (lower.includes("undo")) return "action:undo";
+      if (lower.includes("redo")) return "action:redo";
+      if (lower.includes("delete") || lower.includes("remove")) return "action:delete";
+      if (lower.includes("save")) return "action:save";
+      if (lower.includes("export")) return "action:export";
+      if (lower.includes("zoom in")) return "zoom:in";
+      if (lower.includes("zoom out")) return "zoom:out";
+
+      return lower;
+    })();
+
+    if (normalizedCmd.startsWith("draw:")) {
+      const shape = normalizedCmd.split(":")[1];
       const color = defaultColors[Math.floor(Math.random() * defaultColors.length)];
-      // Extended shape/component map
       const shapeMap: Record<string, { type: string; w: number; h: number; cornerRadius: number; text?: string; fontSize?: number; fontWeight?: string; fillColor?: string }> = {
         rectangle: { type: "Rectangle", w: 160, h: 120, cornerRadius: 8 },
         ellipse: { type: "Ellipse", w: 120, h: 120, cornerRadius: 0 },
@@ -786,29 +818,46 @@ const WorkspaceCanvas = () => {
       setElements(prev => [...prev, newEl]);
       setSelectedId(newEl.id);
       setActiveTool("Select");
-    } else if (cmd.startsWith("template:")) {
-      // Voice triggered template - open template picker and auto-select
-      setShowTemplatePicker(true);
-    } else if (cmd === "zoom:in") {
-      setZoom(z => Math.min(z + 25, 400));
-    } else if (cmd === "zoom:out") {
-      setZoom(z => Math.max(z - 25, 25));
-    } else if (cmd === "action:undo") {
-      handleUndo();
-    } else if (cmd === "action:redo") {
-      handleRedo();
-    } else if (cmd === "action:delete") {
-      handleDelete();
-    } else if (cmd === "action:export") {
-      setShowExportModal(true);
-    } else if (cmd === "action:save") {
-      saveNow();
-    } else if (cmd === "action:selectAll") {
-      setMultiSelect(elements.map(el => el.id));
-    } else if (cmd === "action:templates") {
-      setShowTemplatePicker(true);
+      return;
     }
-  }, [elements, pushHistory, saveNow]);
+
+    if (normalizedCmd.startsWith("template:")) {
+      const templateId = normalizedCmd.split(":")[1];
+      const voiceTemplates: Record<string, { name: string; width: number; height: number; type: string }> = {
+        "web-landing": { name: "Landing Page", width: 1440, height: 900, type: "website" },
+        "web-portfolio": { name: "Portfolio", width: 1440, height: 900, type: "website" },
+        "web-dashboard": { name: "Dashboard", width: 1440, height: 900, type: "website" },
+        "web-ecommerce": { name: "E-Commerce", width: 1440, height: 900, type: "website" },
+        "sl-pitch": { name: "Pitch Deck", width: 1920, height: 1080, type: "slides" },
+        "wb-brainstorm": { name: "Brainstorm", width: 3000, height: 2000, type: "whiteboard" },
+      };
+
+      if (voiceTemplates[templateId]) {
+        handleTemplateSelect(voiceTemplates[templateId]);
+      } else {
+        setShowTemplatePicker(true);
+      }
+      return;
+    }
+
+    if (normalizedCmd === "zoom:in") setZoom(z => Math.min(z + 25, 400));
+    else if (normalizedCmd === "zoom:out") setZoom(z => Math.max(z - 25, 25));
+    else if (normalizedCmd === "action:undo") handleUndo();
+    else if (normalizedCmd === "action:redo") handleRedo();
+    else if (normalizedCmd === "action:delete") handleDelete();
+    else if (normalizedCmd === "action:export") setShowExportModal(true);
+    else if (normalizedCmd === "action:save") saveNow();
+    else if (normalizedCmd === "action:selectAll") selectAllVisibleElements();
+    else if (normalizedCmd === "action:templates") setShowTemplatePicker(true);
+  }, [
+    handleDelete,
+    handleRedo,
+    handleTemplateSelect,
+    handleUndo,
+    pushHistory,
+    saveNow,
+    selectAllVisibleElements,
+  ]);
 
   // Listen for voice commands dispatched from navbar
   useEffect(() => {
