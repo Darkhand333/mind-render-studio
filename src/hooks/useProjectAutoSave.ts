@@ -127,7 +127,7 @@ export const useProjectAutoSave = (
   }, [projectId, user]);
 
   const saveNow = useCallback(async () => {
-    if (!projectId || !user) return;
+    if (!projectId || !user || !loadedRef.current) return;
     setSaving(true);
     dirtyRef.current = false;
 
