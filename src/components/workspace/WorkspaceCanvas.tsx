@@ -745,6 +745,16 @@ const WorkspaceCanvas = () => {
     }
   }, [elements, pushHistory, saveNow]);
 
+  // Listen for voice commands dispatched from navbar
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const cmd = (e as CustomEvent).detail;
+      if (cmd) handleVoiceCommand(cmd);
+    };
+    window.addEventListener("voice-command", handler);
+    return () => window.removeEventListener("voice-command", handler);
+  }, [handleVoiceCommand]);
+
   // Prototype link management
   const addPrototypeLink = (fromId: number, toId: number) => {
     setPrototypeLinks(prev => {
