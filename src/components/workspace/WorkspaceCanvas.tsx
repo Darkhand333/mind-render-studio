@@ -206,31 +206,68 @@ const WorkspaceCanvas = () => {
   const activeElId = selectedId ?? lastSelectedId;
   const activeEl = activeElId ? elements.find(e => e.id === activeElId) || null : null;
 
+  const selectAllVisibleElements = useCallback(() => {
+    setMultiSelect(elements.filter((el) => el.visible).map((el) => el.id));
+    setSelectedId(null);
+  }, [elements]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (editingTextId || renamingPageId) return;
+
+      const activeNode = document.activeElement as HTMLElement | null;
+      const isTypingField = !!activeNode && (
+        activeNode.tagName === "INPUT" ||
+        activeNode.tagName === "TEXTAREA" ||
+        activeNode.tagName === "SELECT" ||
+        activeNode.isContentEditable
+      );
+
       const key = e.key.toUpperCase();
-      const tool = allTools.find(t => t.shortcut === key);
+      const tool = allTools.find((t) => t.shortcut === key);
       if (tool && !e.metaKey && !e.ctrlKey) {
-        if (tool.label === "Image") { imageInputRef.current?.click(); e.preventDefault(); return; }
-        setActiveTool(tool.label); e.preventDefault();
+        if (tool.label === "Image") {
+          imageInputRef.current?.click();
+          e.preventDefault();
+          return;
+        }
+        setActiveTool(tool.label);
+        e.preventDefault();
       }
-      if (e.key === "Delete" || e.key === "Backspace") { if (selectedId) { handleDelete(); e.preventDefault(); } }
+
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedId) {
+          handleDelete();
+          e.preventDefault();
+        }
+      }
       if ((e.metaKey || e.ctrlKey) && e.key === "z") { handleUndo(); e.preventDefault(); }
       if ((e.metaKey || e.ctrlKey) && e.key === "y") { handleRedo(); e.preventDefault(); }
       if ((e.metaKey || e.ctrlKey) && e.key === "d") { e.preventDefault(); handleDuplicate(); }
       if ((e.metaKey || e.ctrlKey) && e.key === "g") { e.preventDefault(); handleGroupSelected(); }
-      if ((e.metaKey || e.ctrlKey) && e.key === "a") { e.preventDefault(); setMultiSelect(elements.map(el => el.id)); setSelectedId(null); }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+        if (isTypingField || !canvasInteractionRef.current) return;
+        e.preventDefault();
+        selectAllVisibleElements();
+      }
       if (e.key === "Escape") {
         if (previewMode) { setPreviewMode(false); setPreviewCurrentFrame(null); }
         else if (editingBezier) { setEditingBezier(null); }
         else { setSelectedId(null); setActiveTool("Select"); setMultiSelect([]); }
       }
     };
+
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selectedId, editingTextId, elements, historyIdx, previewMode, renamingPageId, editingBezier]);
+  }, [
+    selectedId,
+    editingTextId,
+    previewMode,
+    renamingPageId,
+    editingBezier,
+    selectAllVisibleElements,
+  ]);
 
   const pushHistory = useCallback(() => {
     setHistory(prev => { const h = prev.slice(0, historyIdx + 1); h.push(JSON.parse(JSON.stringify(elements))); return h; });
