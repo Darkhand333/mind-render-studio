@@ -509,11 +509,13 @@ const WorkspaceCanvas = () => {
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
     if (previewMode) return;
     if (activeTool === "Pan") { setPanning(true); setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y }); return; }
+    // Only handle clicks on the canvas background itself (not on elements) unless drawing
     if (e.target !== canvasRef.current && !isDrawingTool && !isPenTool) return;
     const pos = getCanvasPos(e);
     if (isPenTool) { setPenPoints(prev => [...prev, pos]); return; }
     if (isDrawingTool) { setDrawing(true); setDrawStart(pos); setDrawCurrent(pos); return; }
-    if (activeTool === "Select") setSelectedId(null);
+    // Select tool: clicking empty canvas just deselects. Don't create anything.
+    if (activeTool === "Select" || activeTool === "Scale") { setSelectedId(null); return; }
   };
 
   const handleCanvasMouseUp = (e: React.MouseEvent) => {
