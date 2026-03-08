@@ -139,34 +139,60 @@ const WorkspaceCanvas = () => {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
     const handler = (e: WheelEvent) => {
       e.preventDefault();
       e.stopPropagation();
+
       if (e.ctrlKey || e.metaKey) {
         // Pinch zoom toward cursor
         const rect = canvas.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
         const delta = e.deltaY > 0 ? -5 : 5;
-        setZoom(prevZoom => {
+
+        setZoom((prevZoom) => {
           const newZoom = Math.max(10, Math.min(800, prevZoom + delta));
           const scaleFactor = newZoom / prevZoom;
-          setPanOffset(prev => ({
+          setPanOffset((prev) => ({
             x: mouseX - scaleFactor * (mouseX - prev.x),
             y: mouseY - scaleFactor * (mouseY - prev.y),
           }));
           return newZoom;
         });
-      } else {
-        // Scroll to pan
-        setPanOffset(prev => ({
-          x: prev.x - e.deltaX,
-          y: prev.y - e.deltaY,
-        }));
+        return;
       }
+
+      if (e.shiftKey) {
+        // Shift + scroll pans horizontally (Figma-like)
+        const horizontalDelta = Math.abs(e.deltaX) > 0 ? e.deltaX : e.deltaY;
+        setPanOffset((prev) => ({
+          x: prev.x - horizontalDelta,
+          y: prev.y,
+        }));
+        return;
+      }
+
+      // Regular scroll pans normally
+      setPanOffset((prev) => ({
+        x: prev.x - e.deltaX,
+        y: prev.y - e.deltaY,
+      }));
     };
+
     canvas.addEventListener("wheel", handler, { passive: false });
     return () => canvas.removeEventListener("wheel", handler);
+  }, []);
+
+  // Track if last pointer interaction happened inside the canvas
+  useEffect(() => {
+    const onPointerDownCapture = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      canvasInteractionRef.current = !!(canvasRef.current && target && canvasRef.current.contains(target));
+    };
+
+    window.addEventListener("mousedown", onPointerDownCapture, true);
+    return () => window.removeEventListener("mousedown", onPointerDownCapture, true);
   }, []);
 
   // Close page context menu on click outside
