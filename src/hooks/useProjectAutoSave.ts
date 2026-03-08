@@ -22,6 +22,7 @@ export const useProjectAutoSave = (
   const nameRef = useRef(projectName);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initializedRef = useRef(false);
+  const loadedRef = useRef(false);
 
   dataRef.current = data;
   nameRef.current = projectName;
