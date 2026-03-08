@@ -92,12 +92,12 @@ export const useProjectAutoSave = (
     dirtyRef.current = true;
   }, [data.elements.length, data.pages.length, projectId]);
 
-  // Auto-save every 5 seconds if dirty
+  // Auto-save every 5 seconds if dirty and loaded
   useEffect(() => {
     if (!projectId || !user) return;
 
     const interval = setInterval(async () => {
-      if (!dirtyRef.current) return;
+      if (!dirtyRef.current || !loadedRef.current) return;
       dirtyRef.current = false;
       setSaving(true);
 
