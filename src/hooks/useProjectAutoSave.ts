@@ -86,9 +86,9 @@ export const useProjectAutoSave = (
     initProject();
   }, [user]);
 
-  // Mark dirty when data changes
+  // Mark dirty when data changes (only after initial load)
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || !loadedRef.current) return;
     dirtyRef.current = true;
   }, [data.elements.length, data.pages.length, projectId]);
 
