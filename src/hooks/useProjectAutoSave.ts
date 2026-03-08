@@ -76,6 +76,7 @@ export const useProjectAutoSave = (
 
       if (newProj) {
         setProjectId(newProj.id);
+        loadedRef.current = true;
         const url = new URL(window.location.href);
         url.searchParams.set("project", newProj.id);
         window.history.replaceState({}, "", url.toString());
