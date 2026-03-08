@@ -142,7 +142,7 @@ const WorkspaceCanvas = () => {
     }
   }, [leftTab]);
 
-  // Canvas-only zoom (wheel event)
+  // Canvas-only zoom (wheel event) — zooms toward cursor position
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -150,9 +150,20 @@ const WorkspaceCanvas = () => {
       e.preventDefault();
       e.stopPropagation();
       if (e.ctrlKey || e.metaKey) {
-        // Pinch zoom
+        // Pinch zoom toward cursor
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
         const delta = e.deltaY > 0 ? -5 : 5;
-        setZoom(z => Math.max(10, Math.min(800, z + delta)));
+        setZoom(prevZoom => {
+          const newZoom = Math.max(10, Math.min(800, prevZoom + delta));
+          const scaleFactor = newZoom / prevZoom;
+          setPanOffset(prev => ({
+            x: mouseX - scaleFactor * (mouseX - prev.x),
+            y: mouseY - scaleFactor * (mouseY - prev.y),
+          }));
+          return newZoom;
+        });
       } else {
         // Scroll to pan
         setPanOffset(prev => ({
