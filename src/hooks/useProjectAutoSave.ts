@@ -56,6 +56,7 @@ export const useProjectAutoSave = (
               name: proj.name || "Untitled",
             });
           }
+          loadedRef.current = true;
           return;
         }
       }
