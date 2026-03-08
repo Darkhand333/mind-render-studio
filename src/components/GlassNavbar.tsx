@@ -64,10 +64,20 @@ const GlassNavbar = () => {
           <nav className="hidden md:flex items-center gap-1">
             {navLinks.map((link) => {
               const isActive = location.pathname === link.path;
+              const activeProjectId =
+                new URLSearchParams(location.search).get("project") ||
+                (typeof window !== "undefined"
+                  ? window.localStorage.getItem("protocraft:last-project-id")
+                  : null);
+              const to =
+                link.path === "/workspace" && activeProjectId
+                  ? `${link.path}?project=${encodeURIComponent(activeProjectId)}`
+                  : link.path;
+
               return (
                 <Link
                   key={link.path}
-                  to={link.path}
+                  to={to}
                   className={`relative px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-300 ${
                     isActive ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground"
                   }`}

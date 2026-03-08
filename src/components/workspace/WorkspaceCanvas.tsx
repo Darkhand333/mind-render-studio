@@ -92,6 +92,7 @@ const WorkspaceCanvas = () => {
   const canvasRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
+  const canvasInteractionRef = useRef(false);
 
   // Callback to load saved project data into state
   const handleLoadProject = useCallback((data: { elements: any[]; pages: any[]; canvasSettings?: any; name: string }) => {
@@ -138,34 +139,60 @@ const WorkspaceCanvas = () => {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
     const handler = (e: WheelEvent) => {
       e.preventDefault();
       e.stopPropagation();
+
       if (e.ctrlKey || e.metaKey) {
         // Pinch zoom toward cursor
         const rect = canvas.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
         const delta = e.deltaY > 0 ? -5 : 5;
-        setZoom(prevZoom => {
+
+        setZoom((prevZoom) => {
           const newZoom = Math.max(10, Math.min(800, prevZoom + delta));
           const scaleFactor = newZoom / prevZoom;
-          setPanOffset(prev => ({
+          setPanOffset((prev) => ({
             x: mouseX - scaleFactor * (mouseX - prev.x),
             y: mouseY - scaleFactor * (mouseY - prev.y),
           }));
           return newZoom;
         });
-      } else {
-        // Scroll to pan
-        setPanOffset(prev => ({
-          x: prev.x - e.deltaX,
-          y: prev.y - e.deltaY,
-        }));
+        return;
       }
+
+      if (e.shiftKey) {
+        // Shift + scroll pans horizontally (Figma-like)
+        const horizontalDelta = Math.abs(e.deltaX) > 0 ? e.deltaX : e.deltaY;
+        setPanOffset((prev) => ({
+          x: prev.x - horizontalDelta,
+          y: prev.y,
+        }));
+        return;
+      }
+
+      // Regular scroll pans normally
+      setPanOffset((prev) => ({
+        x: prev.x - e.deltaX,
+        y: prev.y - e.deltaY,
+      }));
     };
+
     canvas.addEventListener("wheel", handler, { passive: false });
     return () => canvas.removeEventListener("wheel", handler);
+  }, []);
+
+  // Track if last pointer interaction happened inside the canvas
+  useEffect(() => {
+    const onPointerDownCapture = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      canvasInteractionRef.current = !!(canvasRef.current && target && canvasRef.current.contains(target));
+    };
+
+    window.addEventListener("mousedown", onPointerDownCapture, true);
+    return () => window.removeEventListener("mousedown", onPointerDownCapture, true);
   }, []);
 
   // Close page context menu on click outside
@@ -179,31 +206,68 @@ const WorkspaceCanvas = () => {
   const activeElId = selectedId ?? lastSelectedId;
   const activeEl = activeElId ? elements.find(e => e.id === activeElId) || null : null;
 
+  const selectAllVisibleElements = useCallback(() => {
+    setMultiSelect(elements.filter((el) => el.visible).map((el) => el.id));
+    setSelectedId(null);
+  }, [elements]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (editingTextId || renamingPageId) return;
+
+      const activeNode = document.activeElement as HTMLElement | null;
+      const isTypingField = !!activeNode && (
+        activeNode.tagName === "INPUT" ||
+        activeNode.tagName === "TEXTAREA" ||
+        activeNode.tagName === "SELECT" ||
+        activeNode.isContentEditable
+      );
+
       const key = e.key.toUpperCase();
-      const tool = allTools.find(t => t.shortcut === key);
+      const tool = allTools.find((t) => t.shortcut === key);
       if (tool && !e.metaKey && !e.ctrlKey) {
-        if (tool.label === "Image") { imageInputRef.current?.click(); e.preventDefault(); return; }
-        setActiveTool(tool.label); e.preventDefault();
+        if (tool.label === "Image") {
+          imageInputRef.current?.click();
+          e.preventDefault();
+          return;
+        }
+        setActiveTool(tool.label);
+        e.preventDefault();
       }
-      if (e.key === "Delete" || e.key === "Backspace") { if (selectedId) { handleDelete(); e.preventDefault(); } }
+
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedId) {
+          handleDelete();
+          e.preventDefault();
+        }
+      }
       if ((e.metaKey || e.ctrlKey) && e.key === "z") { handleUndo(); e.preventDefault(); }
       if ((e.metaKey || e.ctrlKey) && e.key === "y") { handleRedo(); e.preventDefault(); }
       if ((e.metaKey || e.ctrlKey) && e.key === "d") { e.preventDefault(); handleDuplicate(); }
       if ((e.metaKey || e.ctrlKey) && e.key === "g") { e.preventDefault(); handleGroupSelected(); }
-      if ((e.metaKey || e.ctrlKey) && e.key === "a") { e.preventDefault(); setMultiSelect(elements.map(el => el.id)); setSelectedId(null); }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+        if (isTypingField || !canvasInteractionRef.current) return;
+        e.preventDefault();
+        selectAllVisibleElements();
+      }
       if (e.key === "Escape") {
         if (previewMode) { setPreviewMode(false); setPreviewCurrentFrame(null); }
         else if (editingBezier) { setEditingBezier(null); }
         else { setSelectedId(null); setActiveTool("Select"); setMultiSelect([]); }
       }
     };
+
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selectedId, editingTextId, elements, historyIdx, previewMode, renamingPageId, editingBezier]);
+  }, [
+    selectedId,
+    editingTextId,
+    previewMode,
+    renamingPageId,
+    editingBezier,
+    selectAllVisibleElements,
+  ]);
 
   const pushHistory = useCallback(() => {
     setHistory(prev => { const h = prev.slice(0, historyIdx + 1); h.push(JSON.parse(JSON.stringify(elements))); return h; });
@@ -500,6 +564,7 @@ const WorkspaceCanvas = () => {
   };
 
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
+    canvasInteractionRef.current = true;
     if (previewMode) return;
     if (activeTool === "Pan") { setPanning(true); setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y }); return; }
     // Only handle clicks on the canvas background itself (not on elements) unless drawing
@@ -687,10 +752,42 @@ const WorkspaceCanvas = () => {
 
   // Handle voice commands from VoiceCommandModal
   const handleVoiceCommand = useCallback((cmd: string) => {
-    if (cmd.startsWith("draw:")) {
-      const shape = cmd.split(":")[1];
+    const lower = cmd.toLowerCase().trim();
+
+    const normalizedCmd = (() => {
+      if (lower.includes(":")) return lower;
+
+      if (lower.includes("portfolio")) return "template:web-portfolio";
+      if (lower.includes("landing") || lower.includes("website") || lower.includes("homepage")) return "template:web-landing";
+      if (lower.includes("dashboard")) return "template:web-dashboard";
+      if (lower.includes("e-commerce") || lower.includes("ecommerce") || lower.includes("store")) return "template:web-ecommerce";
+      if (lower.includes("presentation") || lower.includes("slides") || lower.includes("pitch")) return "template:sl-pitch";
+      if (lower.includes("brainstorm") || lower.includes("whiteboard")) return "template:wb-brainstorm";
+
+      if (lower.includes("rectangle") || lower.includes("square") || lower.includes("box")) return "draw:rectangle";
+      if (lower.includes("circle") || lower.includes("ellipse")) return "draw:ellipse";
+      if (lower.includes("button")) return "draw:button";
+      if (lower.includes("navbar") || lower.includes("navigation") || lower.includes("menu")) return "draw:navbar";
+      if (lower.includes("hero")) return "draw:hero";
+      if (lower.includes("footer")) return "draw:footer";
+      if (lower.includes("heading") || lower.includes("title")) return "draw:heading";
+      if (lower.includes("text")) return "draw:text";
+
+      if (lower.includes("select all")) return "action:selectAll";
+      if (lower.includes("undo")) return "action:undo";
+      if (lower.includes("redo")) return "action:redo";
+      if (lower.includes("delete") || lower.includes("remove")) return "action:delete";
+      if (lower.includes("save")) return "action:save";
+      if (lower.includes("export")) return "action:export";
+      if (lower.includes("zoom in")) return "zoom:in";
+      if (lower.includes("zoom out")) return "zoom:out";
+
+      return lower;
+    })();
+
+    if (normalizedCmd.startsWith("draw:")) {
+      const shape = normalizedCmd.split(":")[1];
       const color = defaultColors[Math.floor(Math.random() * defaultColors.length)];
-      // Extended shape/component map
       const shapeMap: Record<string, { type: string; w: number; h: number; cornerRadius: number; text?: string; fontSize?: number; fontWeight?: string; fillColor?: string }> = {
         rectangle: { type: "Rectangle", w: 160, h: 120, cornerRadius: 8 },
         ellipse: { type: "Ellipse", w: 120, h: 120, cornerRadius: 0 },
@@ -722,29 +819,46 @@ const WorkspaceCanvas = () => {
       setElements(prev => [...prev, newEl]);
       setSelectedId(newEl.id);
       setActiveTool("Select");
-    } else if (cmd.startsWith("template:")) {
-      // Voice triggered template - open template picker and auto-select
-      setShowTemplatePicker(true);
-    } else if (cmd === "zoom:in") {
-      setZoom(z => Math.min(z + 25, 400));
-    } else if (cmd === "zoom:out") {
-      setZoom(z => Math.max(z - 25, 25));
-    } else if (cmd === "action:undo") {
-      handleUndo();
-    } else if (cmd === "action:redo") {
-      handleRedo();
-    } else if (cmd === "action:delete") {
-      handleDelete();
-    } else if (cmd === "action:export") {
-      setShowExportModal(true);
-    } else if (cmd === "action:save") {
-      saveNow();
-    } else if (cmd === "action:selectAll") {
-      setMultiSelect(elements.map(el => el.id));
-    } else if (cmd === "action:templates") {
-      setShowTemplatePicker(true);
+      return;
     }
-  }, [elements, pushHistory, saveNow]);
+
+    if (normalizedCmd.startsWith("template:")) {
+      const templateId = normalizedCmd.split(":")[1];
+      const voiceTemplates: Record<string, { name: string; width: number; height: number; type: string }> = {
+        "web-landing": { name: "Landing Page", width: 1440, height: 900, type: "website" },
+        "web-portfolio": { name: "Portfolio", width: 1440, height: 900, type: "website" },
+        "web-dashboard": { name: "Dashboard", width: 1440, height: 900, type: "website" },
+        "web-ecommerce": { name: "E-Commerce", width: 1440, height: 900, type: "website" },
+        "sl-pitch": { name: "Pitch Deck", width: 1920, height: 1080, type: "slides" },
+        "wb-brainstorm": { name: "Brainstorm", width: 3000, height: 2000, type: "whiteboard" },
+      };
+
+      if (voiceTemplates[templateId]) {
+        handleTemplateSelect(voiceTemplates[templateId]);
+      } else {
+        setShowTemplatePicker(true);
+      }
+      return;
+    }
+
+    if (normalizedCmd === "zoom:in") setZoom(z => Math.min(z + 25, 400));
+    else if (normalizedCmd === "zoom:out") setZoom(z => Math.max(z - 25, 25));
+    else if (normalizedCmd === "action:undo") handleUndo();
+    else if (normalizedCmd === "action:redo") handleRedo();
+    else if (normalizedCmd === "action:delete") handleDelete();
+    else if (normalizedCmd === "action:export") setShowExportModal(true);
+    else if (normalizedCmd === "action:save") saveNow();
+    else if (normalizedCmd === "action:selectAll") selectAllVisibleElements();
+    else if (normalizedCmd === "action:templates") setShowTemplatePicker(true);
+  }, [
+    handleDelete,
+    handleRedo,
+    handleTemplateSelect,
+    handleUndo,
+    pushHistory,
+    saveNow,
+    selectAllVisibleElements,
+  ]);
 
   // Listen for voice commands dispatched from navbar
   useEffect(() => {
