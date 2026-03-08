@@ -92,6 +92,7 @@ const WorkspaceCanvas = () => {
   const canvasRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
+  const canvasInteractionRef = useRef(false);
 
   // Callback to load saved project data into state
   const handleLoadProject = useCallback((data: { elements: any[]; pages: any[]; canvasSettings?: any; name: string }) => {
