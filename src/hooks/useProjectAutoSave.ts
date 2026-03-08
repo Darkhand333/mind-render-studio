@@ -87,10 +87,12 @@ export const useProjectAutoSave = (
   }, [user]);
 
   // Mark dirty when data changes (only after initial load)
+  const elementsJson = JSON.stringify(data.elements);
+  const pagesJson = JSON.stringify(data.pages);
   useEffect(() => {
     if (!projectId || !loadedRef.current) return;
     dirtyRef.current = true;
-  }, [data.elements.length, data.pages.length, projectId]);
+  }, [elementsJson, pagesJson, projectId]);
 
   // Auto-save every 5 seconds if dirty and loaded
   useEffect(() => {
