@@ -8,7 +8,11 @@ type ProjectData = {
   canvasSettings?: any;
 };
 
-export const useProjectAutoSave = (projectName: string, data: ProjectData) => {
+export const useProjectAutoSave = (
+  projectName: string,
+  data: ProjectData,
+  onLoadProject?: (data: ProjectData & { name: string }) => void
+) => {
   const { user } = useAuth();
   const [projectId, setProjectId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -17,13 +21,15 @@ export const useProjectAutoSave = (projectName: string, data: ProjectData) => {
   const dataRef = useRef(data);
   const nameRef = useRef(projectName);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initializedRef = useRef(false);
 
   dataRef.current = data;
   nameRef.current = projectName;
 
   // Create or load project
   useEffect(() => {
-    if (!user) return;
+    if (!user || initializedRef.current) return;
+    initializedRef.current = true;
 
     const initProject = async () => {
       // Check URL for project ID
@@ -40,7 +46,16 @@ export const useProjectAutoSave = (projectName: string, data: ProjectData) => {
 
         if (proj) {
           setProjectId(proj.id);
-          return proj;
+          // Load saved data back into canvas
+          if (onLoadProject) {
+            onLoadProject({
+              elements: (proj.elements as any[]) || [],
+              pages: (proj.pages as any[]) || [{ id: 1, name: "Page 1", active: true }],
+              canvasSettings: proj.canvas_settings || {},
+              name: proj.name || "Untitled",
+            });
+          }
+          return;
         }
       }
 
@@ -59,13 +74,10 @@ export const useProjectAutoSave = (projectName: string, data: ProjectData) => {
 
       if (newProj) {
         setProjectId(newProj.id);
-        // Update URL without reload
         const url = new URL(window.location.href);
         url.searchParams.set("project", newProj.id);
         window.history.replaceState({}, "", url.toString());
       }
-
-      return newProj;
     };
 
     initProject();

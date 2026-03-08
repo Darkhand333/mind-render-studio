@@ -39,7 +39,8 @@ const GlassNavbar = () => {
   }, []);
 
   const handleVoiceCommand = (transcript: string) => {
-    console.log("Voice command:", transcript);
+    // Dispatch to workspace canvas via custom event
+    window.dispatchEvent(new CustomEvent("voice-command", { detail: transcript }));
   };
 
   return (

@@ -93,13 +93,35 @@ const WorkspaceCanvas = () => {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
 
+  // Callback to load saved project data into state
+  const handleLoadProject = useCallback((data: { elements: any[]; pages: any[]; canvasSettings?: any; name: string }) => {
+    if (data.elements && data.elements.length > 0) {
+      setElements(data.elements);
+      // Update nextId to avoid collisions
+      const maxId = Math.max(...data.elements.map((e: any) => e.id || 0), 0);
+      nextId = maxId + 1;
+    }
+    if (data.pages && data.pages.length > 0) {
+      setPages(data.pages);
+    }
+    if (data.canvasSettings) {
+      if (data.canvasSettings.zoom) setZoom(data.canvasSettings.zoom);
+      if (data.canvasSettings.panOffset) setPanOffset(data.canvasSettings.panOffset);
+      if (data.canvasSettings.showGrid !== undefined) setShowGrid(data.canvasSettings.showGrid);
+      if (data.canvasSettings.gridSize) setGridSize(data.canvasSettings.gridSize);
+      if (data.canvasSettings.gridStyle) setGridStyle(data.canvasSettings.gridStyle);
+    }
+    if (data.name) setProjectName(data.name);
+  }, []);
+
   // Auto-save
   const { saving, lastSaved, saveNow, rename: renameProject, loadProject } = useProjectAutoSave(
     projectName,
-    { elements, pages, canvasSettings: { zoom, panOffset, showGrid, gridSize, gridStyle } }
+    { elements, pages, canvasSettings: { zoom, panOffset, showGrid, gridSize, gridStyle } },
+    handleLoadProject
   );
 
-  // No auto-open template picker - user clicks the template button to open it
+  // Voice command listener is set up after handleVoiceCommand is defined (below)
 
   useEffect(() => {
     if (selectedId !== null) setLastSelectedId(selectedId);
@@ -112,7 +134,7 @@ const WorkspaceCanvas = () => {
     }
   }, [leftTab]);
 
-  // Canvas-only zoom (wheel event)
+  // Canvas-only zoom (wheel event) — zooms toward cursor position
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -120,9 +142,20 @@ const WorkspaceCanvas = () => {
       e.preventDefault();
       e.stopPropagation();
       if (e.ctrlKey || e.metaKey) {
-        // Pinch zoom
+        // Pinch zoom toward cursor
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
         const delta = e.deltaY > 0 ? -5 : 5;
-        setZoom(z => Math.max(10, Math.min(800, z + delta)));
+        setZoom(prevZoom => {
+          const newZoom = Math.max(10, Math.min(800, prevZoom + delta));
+          const scaleFactor = newZoom / prevZoom;
+          setPanOffset(prev => ({
+            x: mouseX - scaleFactor * (mouseX - prev.x),
+            y: mouseY - scaleFactor * (mouseY - prev.y),
+          }));
+          return newZoom;
+        });
       } else {
         // Scroll to pan
         setPanOffset(prev => ({
@@ -468,11 +501,13 @@ const WorkspaceCanvas = () => {
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
     if (previewMode) return;
     if (activeTool === "Pan") { setPanning(true); setPanStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y }); return; }
+    // Only handle clicks on the canvas background itself (not on elements) unless drawing
     if (e.target !== canvasRef.current && !isDrawingTool && !isPenTool) return;
     const pos = getCanvasPos(e);
     if (isPenTool) { setPenPoints(prev => [...prev, pos]); return; }
     if (isDrawingTool) { setDrawing(true); setDrawStart(pos); setDrawCurrent(pos); return; }
-    if (activeTool === "Select") setSelectedId(null);
+    // Select tool: clicking empty canvas just deselects. Don't create anything.
+    if (activeTool === "Select" || activeTool === "Scale") { setSelectedId(null); return; }
   };
 
   const handleCanvasMouseUp = (e: React.MouseEvent) => {
@@ -480,10 +515,17 @@ const WorkspaceCanvas = () => {
     if (resizing) { setResizing(null); return; }
     if (drawing && drawStart) {
       const pos = getCanvasPos(e);
+      const rawW = Math.abs(pos.x - drawStart.x);
+      const rawH = Math.abs(pos.y - drawStart.y);
+      // Only create element if user actually dragged (not just clicked)
+      if (rawW < 5 && rawH < 5) {
+        setDrawing(false); setDrawStart(null); setDrawCurrent(null);
+        return;
+      }
       const x = Math.min(drawStart.x, pos.x);
       const y = Math.min(drawStart.y, pos.y);
-      const w = Math.max(Math.abs(pos.x - drawStart.x), 20);
-      const h = Math.max(Math.abs(pos.y - drawStart.y), 20);
+      const w = Math.max(rawW, 20);
+      const h = Math.max(rawH, 20);
       pushHistory();
       const color = defaultColors[Math.floor(Math.random() * defaultColors.length)];
       const newEl: CanvasElement = {
@@ -702,6 +744,16 @@ const WorkspaceCanvas = () => {
       setShowTemplatePicker(true);
     }
   }, [elements, pushHistory, saveNow]);
+
+  // Listen for voice commands dispatched from navbar
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const cmd = (e as CustomEvent).detail;
+      if (cmd) handleVoiceCommand(cmd);
+    };
+    window.addEventListener("voice-command", handler);
+    return () => window.removeEventListener("voice-command", handler);
+  }, [handleVoiceCommand]);
 
   // Prototype link management
   const addPrototypeLink = (fromId: number, toId: number) => {
