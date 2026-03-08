@@ -121,15 +121,7 @@ const WorkspaceCanvas = () => {
     handleLoadProject
   );
 
-  // Listen for voice commands from navbar
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const cmd = (e as CustomEvent).detail;
-      if (cmd) handleVoiceCommand(cmd);
-    };
-    window.addEventListener("voice-command", handler);
-    return () => window.removeEventListener("voice-command", handler);
-  }, [handleVoiceCommand]);
+  // Voice command listener is set up after handleVoiceCommand is defined (below)
 
   useEffect(() => {
     if (selectedId !== null) setLastSelectedId(selectedId);
