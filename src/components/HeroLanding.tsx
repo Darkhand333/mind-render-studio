@@ -66,7 +66,6 @@ const HeroLanding = () => {
             Generate UI
             <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </Link>
-          </Link>
           <button
             onClick={handleVoiceClick}
             className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl font-semibold transition-all duration-300 glass text-foreground hover:bg-secondary/80"
