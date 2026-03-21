@@ -59,7 +59,7 @@ const HeroLanding = () => {
 
         <motion.div variants={stagger.item} className="flex flex-col sm:flex-row items-center justify-center gap-4">
           <Link
-            to="/workspace"
+            to="/generate"
             className="group inline-flex items-center gap-2 px-8 py-3.5 rounded-xl gradient-purple text-primary-foreground font-semibold neon-glow hover:scale-[1.02] transition-transform duration-300"
           >
             <Sparkles className="w-4 h-4" />

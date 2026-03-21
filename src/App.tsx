@@ -8,6 +8,7 @@ import Index from "./pages/Index";
 import Workspace from "./pages/Workspace";
 import UIScore from "./pages/UIScore";
 import MemoryGraph from "./pages/MemoryGraph";
+import GenerateUI from "./pages/GenerateUI";
 import Settings from "./pages/Settings";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
@@ -25,6 +26,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/workspace" element={<Workspace />} />
+            <Route path="/generate" element={<GenerateUI />} />
             <Route path="/ui-score" element={<UIScore />} />
             <Route path="/memory-graph" element={<MemoryGraph />} />
             <Route path="/settings" element={<Settings />} />
