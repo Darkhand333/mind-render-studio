@@ -26,6 +26,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/workspace" element={<Workspace />} />
+            <Route path="/generate" element={<GenerateUI />} />
             <Route path="/ui-score" element={<UIScore />} />
             <Route path="/memory-graph" element={<MemoryGraph />} />
             <Route path="/settings" element={<Settings />} />
