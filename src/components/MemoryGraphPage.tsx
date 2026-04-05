@@ -151,14 +151,15 @@ const MemoryGraphPage = () => {
     <div className="min-h-screen pt-20 px-4 sm:px-6 pb-12">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}
+          className="sticky top-20 z-10 bg-background/80 backdrop-blur-sm pb-4 -mx-2 px-2">
           <div className="flex items-center gap-3 mb-2">
             <Brain className="w-7 h-7 text-primary" />
             <h1 className="text-3xl font-bold">
               Intent <span className="gradient-text">Memory Graph</span>
             </h1>
           </div>
-          <p className="text-muted-foreground mb-6">
+          <p className="text-muted-foreground mb-2">
             AI tracks your design decisions, maps project architecture, and provides intelligent insights
           </p>
         </motion.div>

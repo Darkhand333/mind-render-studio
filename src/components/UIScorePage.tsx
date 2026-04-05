@@ -85,11 +85,12 @@ const UIScorePage = () => {
   return (
     <div className="min-h-screen pt-20 px-6 pb-12">
       <div className="max-w-3xl mx-auto">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}
+          className="sticky top-20 z-10 bg-background/80 backdrop-blur-sm pb-4 -mx-2 px-2">
           <h1 className="text-3xl font-bold mb-2">
             UI Score <span className="gradient-text">Evaluation</span>
           </h1>
-          <p className="text-muted-foreground mb-8">Paste a link, upload a screenshot, and get an AI-powered design quality score</p>
+          <p className="text-muted-foreground mb-4">Paste a link, upload a screenshot, and get an AI-powered design quality score</p>
         </motion.div>
 
         {/* Input Section */}
