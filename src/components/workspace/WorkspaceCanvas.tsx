@@ -125,6 +125,29 @@ const WorkspaceCanvas = () => {
 
   // Voice command listener is set up after handleVoiceCommand is defined (below)
 
+  // Handle import from Generate UI page
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("import") === "generated") {
+      const raw = localStorage.getItem("protocraft:imported-ui");
+      if (raw) {
+        try {
+          const data = JSON.parse(raw);
+          if (data.elements && data.elements.length > 0) {
+            setElements(prev => [...prev, ...data.elements]);
+            const maxId = Math.max(...data.elements.map((e: any) => e.id || 0), nextId);
+            nextId = maxId + 1;
+          }
+          localStorage.removeItem("protocraft:imported-ui");
+          // Clean the URL
+          const url = new URL(window.location.href);
+          url.searchParams.delete("import");
+          window.history.replaceState({}, "", url.toString());
+        } catch {}
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (selectedId !== null) setLastSelectedId(selectedId);
   }, [selectedId]);
@@ -1588,12 +1611,12 @@ const WorkspaceCanvas = () => {
               } />
             )}
 
-            <div className="absolute bottom-3 left-3 z-10 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/80 backdrop-blur-sm">
+            <div className="absolute bottom-3 left-3 z-10 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-100 border border-gray-200 shadow-sm">
               <Move className="w-3 h-3 text-primary" />
-              <span className="text-[10px] text-muted-foreground font-medium">{prototypeMode ? "Prototype" : activeTool}</span>
+              <span className="text-[10px] text-gray-600 font-medium">{prototypeMode ? "Prototype" : activeTool}</span>
               <span className="text-[10px] text-primary font-bold ml-2">{zoom}%</span>
-              <span className="text-[10px] text-muted-foreground">· {elements.length} objects</span>
-              {prototypeMode && <span className="text-[10px] text-yellow-400">· {prototypeLinks.length} links</span>}
+              <span className="text-[10px] text-gray-500">· {elements.length} objects</span>
+              {prototypeMode && <span className="text-[10px] text-yellow-600">· {prototypeLinks.length} links</span>}
             </div>
 
             {renderShapePreview()}
