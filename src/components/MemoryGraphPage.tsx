@@ -51,7 +51,7 @@ const categoryColors: Record<string, string> = {
 };
 
 const projectOverview = {
-  name: "ProtoCraft",
+  name: "Protocraft",
   description: "A Figma-like prototyping platform with AI-powered design assistance, real-time collaboration, and intelligent memory tracking. Built with React, TypeScript, Tailwind CSS, and Framer Motion.",
   stats: [
     { label: "Pages", value: "7", icon: Layout },
@@ -65,7 +65,7 @@ const projectOverview = {
     { name: "Tailwind CSS", icon: Palette },
     { name: "Framer Motion", icon: Activity },
     { name: "Lovable Cloud", icon: Database },
-    { name: "Gemini AI", icon: Cpu },
+    { name: "Protocraft AI", icon: Cpu },
   ],
   features: [
     "Voice commands for hands-free prototyping",
