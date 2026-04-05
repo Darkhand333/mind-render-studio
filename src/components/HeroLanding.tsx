@@ -49,7 +49,7 @@ const HeroLanding = () => {
           variants={stagger.item}
           className="text-lg md:text-xl text-muted-foreground max-w-xl mx-auto mb-10 leading-relaxed"
         >
-          ProtoCraft turns your voice into living design — build stunning multi-page
+          Protocraft turns your voice into living design — build stunning multi-page
           prototypes with AI, in seconds.
         </motion.p>
 
