@@ -1086,11 +1086,11 @@ const WorkspaceCanvas = () => {
   const renderRuler = (axis: "x" | "y") => {
     const canvasRect = canvasRef.current?.getBoundingClientRect();
     const totalSize = axis === "x" ? (canvasRect?.width || 1200) : (canvasRect?.height || 800);
-    const step = zoom >= 100 ? 50 : zoom >= 50 ? 100 : 200;
+    const step = zoom >= 100 ? 50 : zoom >= 50 ? 100 : zoom >= 25 ? 200 : 400;
     const ticks: JSX.Element[] = [];
     const scaleFactor = zoom / 100;
 
-    for (let i = -2000; i < 4000; i += step) {
+    for (let i = -10000; i < 10000; i += step) {
       const screenPos = axis === "x"
         ? i * scaleFactor + panOffset.x
         : i * scaleFactor + panOffset.y;
@@ -1550,7 +1550,7 @@ const WorkspaceCanvas = () => {
 
           <motion.div
             ref={canvasRef} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-            className="absolute overflow-hidden bg-[hsl(240,15%,4%)]"
+            className="absolute overflow-hidden bg-white"
             style={{
               top: showRulers ? RULER_SIZE : 0,
               left: showRulers ? RULER_SIZE : 0,
