@@ -1596,15 +1596,15 @@ const WorkspaceCanvas = () => {
             )}
 
             {showGrid && (
-              <div className="absolute inset-0 opacity-[0.15]" style={
+              <div className="absolute inset-0 opacity-[0.4]" style={
                 gridStyle === "lines" ? {
-                  backgroundImage: `linear-gradient(hsl(var(--primary) / 0.5) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--primary) / 0.5) 1px, transparent 1px)`,
+                  backgroundImage: `linear-gradient(#e0e0e0 1px, transparent 1px), linear-gradient(90deg, #e0e0e0 1px, transparent 1px)`,
                   backgroundSize: `${gridSize}px ${gridSize}px`, backgroundPosition: `${panOffset.x}px ${panOffset.y}px`,
                 } : gridStyle === "dots" ? {
-                  backgroundImage: `radial-gradient(circle, hsl(var(--primary) / 0.6) 1px, transparent 1px)`,
+                  backgroundImage: `radial-gradient(circle, #c0c0c0 1px, transparent 1px)`,
                   backgroundSize: `${gridSize}px ${gridSize}px`, backgroundPosition: `${panOffset.x}px ${panOffset.y}px`,
                 } : {
-                  backgroundImage: `linear-gradient(hsl(var(--primary) / 0.4) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--primary) / 0.4) 1px, transparent 1px), radial-gradient(circle, hsl(var(--primary) / 0.6) 1.5px, transparent 1.5px)`,
+                  backgroundImage: `linear-gradient(#d0d0d0 1px, transparent 1px), linear-gradient(90deg, #d0d0d0 1px, transparent 1px), radial-gradient(circle, #b0b0b0 1.5px, transparent 1.5px)`,
                   backgroundSize: `${gridSize}px ${gridSize}px, ${gridSize}px ${gridSize}px, ${gridSize}px ${gridSize}px`,
                   backgroundPosition: `${panOffset.x}px ${panOffset.y}px`,
                 }
