@@ -1573,7 +1573,7 @@ const WorkspaceCanvas = () => {
             )}
 
             {showGrid && (
-              <div className="absolute inset-0 opacity-[0.06]" style={
+              <div className="absolute inset-0 opacity-[0.15]" style={
                 gridStyle === "lines" ? {
                   backgroundImage: `linear-gradient(hsl(var(--primary) / 0.5) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--primary) / 0.5) 1px, transparent 1px)`,
                   backgroundSize: `${gridSize}px ${gridSize}px`, backgroundPosition: `${panOffset.x}px ${panOffset.y}px`,
