@@ -21,7 +21,7 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-    const systemPrompt = `You are ProtoCraft UI Generator — an expert frontend developer and UI designer.
+    const systemPrompt = `You are Protocraft UI Generator — an expert frontend developer and UI designer.
 
 Your task: Given a user's description, generate a COMPLETE, BEAUTIFUL, PRODUCTION-READY single-page UI.
 

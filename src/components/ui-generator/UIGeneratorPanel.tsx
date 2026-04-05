@@ -2,9 +2,10 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Mic, MicOff, Send, Loader2, Code, Eye, Download, Copy, Check,
-  Sparkles, Monitor, Tablet, Smartphone, RotateCcw, Wand2
+  Sparkles, Monitor, Tablet, Smartphone, RotateCcw, Wand2, Layout
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from "react-router-dom";
 
 const GENERATE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ui`;
 
@@ -21,6 +22,8 @@ const EXAMPLE_PROMPTS = [
   "Signup page with social login buttons",
 ];
 
+const SILENCE_TIMEOUT_MS = 2000;
+
 const UIGeneratorPanel = () => {
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -32,17 +35,35 @@ const UIGeneratorPanel = () => {
   const [copied, setCopied] = useState(false);
   const [history, setHistory] = useState<{ prompt: string; ui: GeneratedUI }[]>([]);
   const recognitionRef = useRef<any>(null);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
-  // Voice input
+  // Clear silence timer
+  const clearSilenceTimer = useCallback(() => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+  }, []);
+
+  // Stop recognition gracefully
+  const stopListening = useCallback(() => {
+    clearSilenceTimer();
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch {}
+      recognitionRef.current = null;
+    }
+    setIsListening(false);
+    setInterimText("");
+  }, [clearSilenceTimer]);
+
+  // Voice input with auto-stop after 2s silence
   const toggleVoice = useCallback(() => {
     if (isListening) {
-      recognitionRef.current?.abort();
-      recognitionRef.current = null;
-      setIsListening(false);
-      setInterimText("");
+      stopListening();
       return;
     }
 
@@ -56,6 +77,15 @@ const UIGeneratorPanel = () => {
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
+
+    // Reset silence timer on each result
+    const resetSilenceTimer = () => {
+      clearSilenceTimer();
+      silenceTimerRef.current = setTimeout(() => {
+        // Auto-stop after 2s of silence
+        stopListening();
+      }, SILENCE_TIMEOUT_MS);
+    };
 
     recognition.onresult = (e: any) => {
       let interim = "";
@@ -71,44 +101,45 @@ const UIGeneratorPanel = () => {
       } else {
         setInterimText(interim);
       }
+      // Reset the silence timer every time we get speech input
+      resetSilenceTimer();
     };
 
     recognition.onend = () => {
-      if (recognitionRef.current === recognition) {
-        try { recognition.start(); } catch { setIsListening(false); }
-      }
+      // Don't restart — we want it to stop
+      setIsListening(false);
+      clearSilenceTimer();
     };
 
     recognition.onerror = (e: any) => {
       if (e.error === "not-allowed") {
         toast({ title: "Microphone blocked", description: "Allow mic access in browser settings", variant: "destructive" });
-        setIsListening(false);
       }
+      stopListening();
     };
 
     recognitionRef.current = recognition;
     setIsListening(true);
     recognition.start();
-  }, [isListening, toast]);
+    // Start the initial silence timer
+    silenceTimerRef.current = setTimeout(() => {
+      stopListening();
+    }, SILENCE_TIMEOUT_MS + 1000); // Give extra 1s for initial start
+  }, [isListening, toast, stopListening, clearSilenceTimer]);
 
   // Stop voice when unmount
   useEffect(() => {
     return () => {
       recognitionRef.current?.abort();
+      clearSilenceTimer();
     };
-  }, []);
+  }, [clearSilenceTimer]);
 
   const handleGenerate = useCallback(async () => {
     const text = prompt.trim();
     if (!text) return;
 
-    // Stop voice if active
-    if (isListening) {
-      recognitionRef.current?.abort();
-      recognitionRef.current = null;
-      setIsListening(false);
-      setInterimText("");
-    }
+    if (isListening) stopListening();
 
     setIsGenerating(true);
     setGeneratedUI(null);
@@ -138,7 +169,73 @@ const UIGeneratorPanel = () => {
     } finally {
       setIsGenerating(false);
     }
-  }, [prompt, isListening, toast]);
+  }, [prompt, isListening, toast, stopListening]);
+
+  // Convert generated UI to workspace elements
+  const handleConvertToWorkspace = useCallback(() => {
+    if (!generatedUI) return;
+
+    // Create workspace elements from the generated HTML
+    const elements: any[] = [];
+    let nextId = Date.now();
+
+    // Create a main frame containing the generated UI as an embedded HTML element
+    const frameEl = {
+      id: nextId++,
+      type: "Frame",
+      label: prompt || "Generated UI",
+      x: 100,
+      y: 100,
+      w: 1440,
+      h: 900,
+      fillColor: "#ffffff",
+      strokeColor: "hsl(263, 70%, 58%)",
+      strokeWidth: 1,
+      opacity: 100,
+      rotation: 0,
+      cornerRadius: 0,
+      visible: true,
+      locked: false,
+    };
+    elements.push(frameEl);
+
+    // Add a text label
+    elements.push({
+      id: nextId++,
+      type: "Text",
+      label: "Title",
+      x: 120,
+      y: 120,
+      w: 400,
+      h: 40,
+      text: prompt || "Generated UI",
+      fontSize: 24,
+      fontWeight: "700",
+      fontFamily: "Inter",
+      textAlign: "left",
+      fillColor: "#333333",
+      strokeColor: "transparent",
+      strokeWidth: 0,
+      opacity: 100,
+      rotation: 0,
+      cornerRadius: 0,
+      visible: true,
+      locked: false,
+    });
+
+    // Store the generated HTML as embedded content metadata
+    const htmlContent = `<!DOCTYPE html><html><head><style>${generatedUI.css}</style></head><body>${generatedUI.html}${generatedUI.js ? `<script>${generatedUI.js}<\/script>` : ""}</body></html>`;
+    
+    // Save to localStorage so workspace can pick it up
+    localStorage.setItem("protocraft:imported-ui", JSON.stringify({
+      elements,
+      htmlContent,
+      prompt: prompt || "Generated UI",
+    }));
+
+    toast({ title: "Converting to Workspace", description: "Opening workspace with your generated UI..." });
+    navigate("/workspace?import=generated");
+  }, [generatedUI, prompt, navigate, toast]);
 
   // Build iframe srcdoc
   const iframeSrc = generatedUI
@@ -184,13 +281,13 @@ ${generatedUI.js ? `<script>${generatedUI.js}<\/script>` : ""}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-8">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass text-sm text-muted-foreground mb-4">
           <Wand2 className="w-3.5 h-3.5 text-primary" />
-          AI UI Generator
+          Protocraft AI Generator
         </div>
         <h1 className="text-3xl md:text-4xl font-black tracking-tight mb-2">
           Describe it. <span className="gradient-text">Generate it.</span>
         </h1>
         <p className="text-muted-foreground max-w-md mx-auto">
-          Type or speak your UI idea — AI creates a complete, beautiful interface instantly.
+          Type or speak your UI idea — Protocraft creates a complete, beautiful interface instantly.
         </p>
       </motion.div>
 
@@ -206,7 +303,7 @@ ${generatedUI.js ? `<script>${generatedUI.js}<\/script>` : ""}
                 ? "gradient-purple neon-glow-sm text-primary-foreground animate-pulse"
                 : "bg-secondary/60 text-muted-foreground hover:text-foreground hover:bg-secondary"
             }`}
-            title={isListening ? "Stop listening" : "Start voice input"}
+            title={isListening ? "Stop listening" : "Start voice input (auto-stops after 2s silence)"}
           >
             {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
           </button>
@@ -223,7 +320,7 @@ ${generatedUI.js ? `<script>${generatedUI.js}<\/script>` : ""}
                   handleGenerate();
                 }
               }}
-              placeholder={isListening ? "Listening... speak your UI idea" : "Describe the UI you want to create..."}
+              placeholder={isListening ? "Listening... speak your UI idea (stops automatically)" : "Describe the UI you want to create..."}
               rows={2}
               className="w-full bg-secondary/40 rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/50 transition-shadow resize-none"
             />
@@ -249,7 +346,7 @@ ${generatedUI.js ? `<script>${generatedUI.js}<\/script>` : ""}
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
             className="mt-3 flex items-center gap-2 text-xs text-primary">
             <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            Listening — speak your UI description, then press Generate
+            Listening — speak now. Stops automatically after 2 seconds of silence.
           </motion.div>
         )}
       </motion.div>
@@ -278,8 +375,8 @@ ${generatedUI.js ? `<script>${generatedUI.js}<\/script>` : ""}
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
           className="max-w-3xl mx-auto text-center py-20">
           <Loader2 className="w-12 h-12 text-primary animate-spin mx-auto mb-4" />
-          <p className="text-lg font-semibold text-foreground mb-1">Generating your UI...</p>
-          <p className="text-sm text-muted-foreground">AI is crafting a beautiful interface from your description</p>
+          <p className="text-lg font-semibold text-foreground mb-1">Protocraft is generating your UI...</p>
+          <p className="text-sm text-muted-foreground">Crafting a beautiful interface from your description</p>
         </motion.div>
       )}
 
@@ -288,7 +385,7 @@ ${generatedUI.js ? `<script>${generatedUI.js}<\/script>` : ""}
         {generatedUI && !isGenerating && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
             {/* Toolbar */}
-            <div className="flex items-center justify-between mb-4 max-w-6xl mx-auto">
+            <div className="flex items-center justify-between mb-4 max-w-6xl mx-auto flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setViewMode("preview")}
@@ -308,7 +405,7 @@ ${generatedUI.js ? `<script>${generatedUI.js}<\/script>` : ""}
                 </button>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {/* Device sizes */}
                 {viewMode === "preview" && (
                   <div className="flex items-center gap-1 mr-2">
@@ -326,6 +423,11 @@ ${generatedUI.js ? `<script>${generatedUI.js}<\/script>` : ""}
                     </button>
                   </div>
                 )}
+                {/* Convert to Workspace */}
+                <button onClick={handleConvertToWorkspace}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/15 text-sm text-primary font-medium hover:bg-primary/25 transition-colors">
+                  <Layout className="w-3.5 h-3.5" /> Open in Workspace
+                </button>
                 <button onClick={handleCopy}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary/50 text-sm text-muted-foreground hover:text-foreground transition-colors">
                   {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
