@@ -1,6 +1,6 @@
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { Mic, MicOff, ArrowRight, Layers, Palette, Zap, Brain, Sparkles } from "lucide-react";
+import { ArrowRight, Layers, Palette, Zap, Brain, Sparkles, Mic } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const features = [
@@ -19,10 +19,6 @@ const stagger = {
 };
 
 const HeroLanding = () => {
-  const handleVoiceClick = useCallback(() => {
-    // Dispatch custom event to open navbar voice modal
-    window.dispatchEvent(new CustomEvent("open-voice-command"));
-  }, []);
 
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center px-6 pt-20">
@@ -66,13 +62,13 @@ const HeroLanding = () => {
             Generate UI
             <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </Link>
-          <button
-            onClick={handleVoiceClick}
+          <Link
+            to="/workspace"
             className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl font-semibold transition-all duration-300 glass text-foreground hover:bg-secondary/80"
           >
-            <Mic className="w-4 h-4" />
-            Voice Command
-          </button>
+            <Layers className="w-4 h-4" />
+            Open Workspace
+          </Link>
           <Link
             to="/ui-score"
             className="inline-flex items-center gap-2 px-8 py-3.5 rounded-xl glass text-foreground font-semibold hover:bg-secondary/80 transition-colors duration-300"
