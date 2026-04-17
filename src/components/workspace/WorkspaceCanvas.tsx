@@ -249,6 +249,12 @@ const WorkspaceCanvas = () => {
     if (selectedId !== null) setLastSelectedId(selectedId);
   }, [selectedId]);
 
+  useEffect(() => {
+    return () => {
+      if (focusTimerRef.current) clearTimeout(focusTimerRef.current);
+    };
+  }, []);
+
   // Focus find input when tab changes
   useEffect(() => {
     if (leftTab === "find" && findInputRef.current) {
@@ -821,16 +827,22 @@ const WorkspaceCanvas = () => {
   };
 
   const handleNewProject = (width: number, height: number, name: string) => {
-    pushHistory();
     const newFrame: CanvasElement = {
       id: nextId++, type: "Frame", x: 100, y: 100, w: width > 2000 ? width / 2 : width, h: height > 2000 ? height / 2 : height,
       label: name, fillColor: "#1a1a2e", strokeColor: "hsl(263, 70%, 58%)", strokeWidth: 1,
       opacity: 100, rotation: 0, cornerRadius: 0, visible: true, locked: false,
     };
-    setElements(prev => [...prev, newFrame]);
+    const nextProject = {
+      elements: [newFrame],
+      pages: [{ id: 1, name: "Page 1", active: true }],
+      canvasSettings: { zoom: 100, panOffset: { x: 0, y: 0 }, showGrid: true, gridSize: 40, gridStyle: "lines" },
+      name,
+    };
+    applyWorkspaceData(nextProject);
+    persistWorkspaceBackup(nextProject);
+    void createProject(name, nextProject, "design");
     setSelectedId(newFrame.id);
     setLeftSidebarView("workspace");
-    setProjectName(name);
   };
 
   // Handle template selection from TemplatePickerModal
