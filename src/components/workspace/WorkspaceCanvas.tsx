@@ -1974,6 +1974,43 @@ const WorkspaceCanvas = () => {
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {showProjectBrowser && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm p-4">
+            <motion.div initial={{ scale: 0.96, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.96, opacity: 0 }} className="glass-strong rounded-2xl border border-border/30 w-full max-w-2xl max-h-[80vh] overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-border/20">
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">Previous projects</h2>
+                  <p className="text-xs text-muted-foreground">Open any saved workspace and continue editing it.</p>
+                </div>
+                <button onClick={() => setShowProjectBrowser(false)} className="p-1 rounded hover:bg-secondary/60 text-muted-foreground"><X className="w-4 h-4" /></button>
+              </div>
+              <div className="p-4 space-y-2 overflow-y-auto max-h-[60vh]">
+                {projectBrowserLoading ? (
+                  <div className="py-10 text-center text-sm text-muted-foreground">Loading projects…</div>
+                ) : recentProjects.length === 0 ? (
+                  <div className="py-10 text-center text-sm text-muted-foreground">No saved projects yet.</div>
+                ) : (
+                  recentProjects.map((project) => (
+                    <button
+                      key={project.id}
+                      onClick={() => void handleOpenExistingProject(project.id)}
+                      className={`w-full flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-colors ${project.id === projectId ? "border-primary/40 bg-primary/10" : "border-border/20 hover:bg-secondary/40"}`}
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-foreground">{project.name}</p>
+                        <p className="text-xs text-muted-foreground">{new Date(project.updated_at).toLocaleString()}</p>
+                      </div>
+                      {project.id === projectId && <span className="text-[10px] font-semibold text-primary">Current</span>}
+                    </button>
+                  ))
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Export Modal */}
       <AnimatePresence>
         {showExportModal && (
