@@ -82,6 +82,10 @@ const WorkspaceCanvas = () => {
   const [pageContextMenu, setPageContextMenu] = useState<{ pageId: number; x: number; y: number } | null>(null);
   const [renamingPageId, setRenamingPageId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [showProjectBrowser, setShowProjectBrowser] = useState(false);
+  const [projectBrowserLoading, setProjectBrowserLoading] = useState(false);
+  const [recentProjects, setRecentProjects] = useState<Array<{ id: string; name: string; project_type: string; updated_at: string; created_at: string }>>([]);
+  const [focusedElementId, setFocusedElementId] = useState<number | null>(null);
   // Rotation handle
   const [rotating, setRotating] = useState<{ id: number; startAngle: number; startRotation: number } | null>(null);
   // Bezier editing
@@ -94,30 +98,37 @@ const WorkspaceCanvas = () => {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
   const canvasInteractionRef = useRef(false);
+  const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hydratedBackupRef = useRef<string | null>(null);
+
+  const applyWorkspaceData = useCallback((data: { elements?: any[]; pages?: any[]; canvasSettings?: any; name?: string }) => {
+    const nextElements = Array.isArray(data.elements) ? data.elements : [];
+    const nextPages = Array.isArray(data.pages) && data.pages.length > 0 ? data.pages : [{ id: 1, name: "Page 1", active: true }];
+    setElements(nextElements);
+    setPages(nextPages);
+    const maxId = Math.max(...nextElements.map((e: any) => e.id || 0), 0);
+    nextId = maxId + 1;
+    setSelectedId(null);
+    setLastSelectedId(null);
+    setMultiSelect([]);
+    setHistory([]);
+    setHistoryIdx(-1);
+    setFocusedElementId(null);
+    setZoom(data.canvasSettings?.zoom ?? 100);
+    setPanOffset(data.canvasSettings?.panOffset ?? { x: 0, y: 0 });
+    setShowGrid(data.canvasSettings?.showGrid ?? true);
+    setGridSize(data.canvasSettings?.gridSize ?? 40);
+    setGridStyle(data.canvasSettings?.gridStyle ?? "lines");
+    setProjectName(data.name || "Untitled");
+  }, []);
 
   // Callback to load saved project data into state
   const handleLoadProject = useCallback((data: { elements: any[]; pages: any[]; canvasSettings?: any; name: string }) => {
-    if (data.elements && data.elements.length > 0) {
-      setElements(data.elements);
-      // Update nextId to avoid collisions
-      const maxId = Math.max(...data.elements.map((e: any) => e.id || 0), 0);
-      nextId = maxId + 1;
-    }
-    if (data.pages && data.pages.length > 0) {
-      setPages(data.pages);
-    }
-    if (data.canvasSettings) {
-      if (data.canvasSettings.zoom) setZoom(data.canvasSettings.zoom);
-      if (data.canvasSettings.panOffset) setPanOffset(data.canvasSettings.panOffset);
-      if (data.canvasSettings.showGrid !== undefined) setShowGrid(data.canvasSettings.showGrid);
-      if (data.canvasSettings.gridSize) setGridSize(data.canvasSettings.gridSize);
-      if (data.canvasSettings.gridStyle) setGridStyle(data.canvasSettings.gridStyle);
-    }
-    if (data.name) setProjectName(data.name);
-  }, []);
+    applyWorkspaceData(data);
+  }, [applyWorkspaceData]);
 
   // Auto-save
-  const { saving, lastSaved, saveNow, rename: renameProject, loadProject } = useProjectAutoSave(
+  const { projectId, saving, lastSaved, saveNow, rename: renameProject, loadProject, createProject, listProjects } = useProjectAutoSave(
     projectName,
     { elements, pages, canvasSettings: { zoom, panOffset, showGrid, gridSize, gridStyle } },
     handleLoadProject
