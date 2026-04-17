@@ -8,6 +8,14 @@ type ProjectData = {
   canvasSettings?: any;
 };
 
+type ProjectSummary = {
+  id: string;
+  name: string;
+  project_type: string;
+  updated_at: string;
+  created_at: string;
+};
+
 const LAST_PROJECT_KEY = "protocraft:last-project-id";
 
 export const useProjectAutoSave = (
@@ -199,8 +207,54 @@ export const useProjectAutoSave = (
       .eq("user_id", user.id);
   }, [projectId, user]);
 
-  const loadProject = useCallback(async (pid: string): Promise<ProjectData | null> => {
+  const createProject = useCallback(async (name: string, nextData: ProjectData, projectType = "design") => {
     if (!user) return null;
+
+    try {
+      await flushSave();
+    } catch {
+      // keep creating the new project even if the previous flush fails
+    }
+
+    dataRef.current = nextData;
+    nameRef.current = name || "Untitled";
+
+    const { data: newProj } = await supabase
+      .from("projects")
+      .insert({
+        user_id: user.id,
+        name: nameRef.current,
+        project_type: projectType,
+        elements: nextData.elements as any,
+        pages: nextData.pages as any,
+        canvas_settings: nextData.canvasSettings as any,
+      })
+      .select()
+      .single();
+
+    if (!newProj) return null;
+
+    setProjectId(newProj.id);
+    persistProjectId(newProj.id);
+    loadedRef.current = true;
+    dirtyRef.current = false;
+    setLastSaved(new Date());
+
+    const url = new URL(window.location.href);
+    url.searchParams.set("project", newProj.id);
+    window.history.replaceState({}, "", url.toString());
+
+    return newProj.id;
+  }, [flushSave, user]);
+
+  const loadProject = useCallback(async (pid: string): Promise<(ProjectData & { name: string }) | null> => {
+    if (!user) return null;
+
+    try {
+      await flushSave();
+    } catch {
+      // load requested project anyway
+    }
 
     const { data: proj } = await supabase
       .from("projects")
@@ -212,18 +266,37 @@ export const useProjectAutoSave = (
     if (proj) {
       setProjectId(proj.id);
       persistProjectId(proj.id);
+      dirtyRef.current = false;
+      loadedRef.current = true;
+      nameRef.current = proj.name || "Untitled";
       const url = new URL(window.location.href);
       url.searchParams.set("project", proj.id);
       window.history.replaceState({}, "", url.toString());
-      return {
+      const payload = {
         elements: (proj.elements as any[]) || [],
         pages: (proj.pages as any[]) || [{ id: 1, name: "Page 1", active: true }],
         canvasSettings: proj.canvas_settings || {},
+        name: proj.name || "Untitled",
       };
+      onLoadProject?.(payload);
+      return payload;
     }
 
     return null;
+  }, [flushSave, onLoadProject, user]);
+
+  const listProjects = useCallback(async (limit = 20): Promise<ProjectSummary[]> => {
+    if (!user) return [];
+
+    const { data } = await supabase
+      .from("projects")
+      .select("id, name, project_type, updated_at, created_at")
+      .eq("user_id", user.id)
+      .order("updated_at", { ascending: false })
+      .limit(limit);
+
+    return data || [];
   }, [user]);
 
-  return { projectId, saving, lastSaved, saveNow, rename, loadProject };
+  return { projectId, saving, lastSaved, saveNow, rename, loadProject, createProject, listProjects };
 };

@@ -82,6 +82,10 @@ const WorkspaceCanvas = () => {
   const [pageContextMenu, setPageContextMenu] = useState<{ pageId: number; x: number; y: number } | null>(null);
   const [renamingPageId, setRenamingPageId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [showProjectBrowser, setShowProjectBrowser] = useState(false);
+  const [projectBrowserLoading, setProjectBrowserLoading] = useState(false);
+  const [recentProjects, setRecentProjects] = useState<Array<{ id: string; name: string; project_type: string; updated_at: string; created_at: string }>>([]);
+  const [focusedElementId, setFocusedElementId] = useState<number | null>(null);
   // Rotation handle
   const [rotating, setRotating] = useState<{ id: number; startAngle: number; startRotation: number } | null>(null);
   // Bezier editing
@@ -94,30 +98,37 @@ const WorkspaceCanvas = () => {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
   const canvasInteractionRef = useRef(false);
+  const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hydratedBackupRef = useRef<string | null>(null);
+
+  const applyWorkspaceData = useCallback((data: { elements?: any[]; pages?: any[]; canvasSettings?: any; name?: string }) => {
+    const nextElements = Array.isArray(data.elements) ? data.elements : [];
+    const nextPages = Array.isArray(data.pages) && data.pages.length > 0 ? data.pages : [{ id: 1, name: "Page 1", active: true }];
+    setElements(nextElements);
+    setPages(nextPages);
+    const maxId = Math.max(...nextElements.map((e: any) => e.id || 0), 0);
+    nextId = maxId + 1;
+    setSelectedId(null);
+    setLastSelectedId(null);
+    setMultiSelect([]);
+    setHistory([]);
+    setHistoryIdx(-1);
+    setFocusedElementId(null);
+    setZoom(data.canvasSettings?.zoom ?? 100);
+    setPanOffset(data.canvasSettings?.panOffset ?? { x: 0, y: 0 });
+    setShowGrid(data.canvasSettings?.showGrid ?? true);
+    setGridSize(data.canvasSettings?.gridSize ?? 40);
+    setGridStyle(data.canvasSettings?.gridStyle ?? "lines");
+    setProjectName(data.name || "Untitled");
+  }, []);
 
   // Callback to load saved project data into state
   const handleLoadProject = useCallback((data: { elements: any[]; pages: any[]; canvasSettings?: any; name: string }) => {
-    if (data.elements && data.elements.length > 0) {
-      setElements(data.elements);
-      // Update nextId to avoid collisions
-      const maxId = Math.max(...data.elements.map((e: any) => e.id || 0), 0);
-      nextId = maxId + 1;
-    }
-    if (data.pages && data.pages.length > 0) {
-      setPages(data.pages);
-    }
-    if (data.canvasSettings) {
-      if (data.canvasSettings.zoom) setZoom(data.canvasSettings.zoom);
-      if (data.canvasSettings.panOffset) setPanOffset(data.canvasSettings.panOffset);
-      if (data.canvasSettings.showGrid !== undefined) setShowGrid(data.canvasSettings.showGrid);
-      if (data.canvasSettings.gridSize) setGridSize(data.canvasSettings.gridSize);
-      if (data.canvasSettings.gridStyle) setGridStyle(data.canvasSettings.gridStyle);
-    }
-    if (data.name) setProjectName(data.name);
-  }, []);
+    applyWorkspaceData(data);
+  }, [applyWorkspaceData]);
 
   // Auto-save
-  const { saving, lastSaved, saveNow, rename: renameProject, loadProject } = useProjectAutoSave(
+  const { projectId, saving, lastSaved, saveNow, rename: renameProject, loadProject, createProject, listProjects } = useProjectAutoSave(
     projectName,
     { elements, pages, canvasSettings: { zoom, panOffset, showGrid, gridSize, gridStyle } },
     handleLoadProject
@@ -125,32 +136,124 @@ const WorkspaceCanvas = () => {
 
   // Voice command listener is set up after handleVoiceCommand is defined (below)
 
+  const persistWorkspaceBackup = useCallback((payload: { elements: any[]; pages: any[]; canvasSettings: any; name: string }) => {
+    try {
+      const serialized = JSON.stringify(payload);
+      hydratedBackupRef.current = serialized;
+      window.localStorage.setItem("protocraft:workspace-backup", serialized);
+    } catch {
+      // no-op
+    }
+  }, []);
+
+  const focusElementInCanvas = useCallback((elementId: number) => {
+    const el = elements.find((item) => item.id === elementId);
+    const canvas = canvasRef.current;
+    if (!el || !canvas) return;
+
+    const canvasRect = canvas.getBoundingClientRect();
+    const targetZoom = Math.max(60, Math.min(zoom, 120));
+    const scale = targetZoom / 100;
+    const margin = 80;
+    const nextPan = {
+      x: canvasRect.width / 2 - (el.x + el.w / 2) * scale,
+      y: canvasRect.height / 2 - (el.y + el.h / 2) * scale,
+    };
+
+    setZoom(targetZoom);
+    setPanOffset(nextPan);
+    setSelectedId(elementId);
+    setLastSelectedId(elementId);
+    setFocusedElementId(elementId);
+
+    if (focusTimerRef.current) clearTimeout(focusTimerRef.current);
+    focusTimerRef.current = setTimeout(() => setFocusedElementId(null), 1800);
+  }, [elements, zoom]);
+
+  const refreshRecentProjects = useCallback(async () => {
+    setProjectBrowserLoading(true);
+    try {
+      const projects = await listProjects(30);
+      setRecentProjects(projects);
+    } finally {
+      setProjectBrowserLoading(false);
+    }
+  }, [listProjects]);
+
+  const handleOpenExistingProject = useCallback(async (pid: string) => {
+    await loadProject(pid);
+    setShowProjectBrowser(false);
+  }, [loadProject]);
+
+  const handleImportGeneratedUi = useCallback(async (raw: string) => {
+    try {
+      const data = JSON.parse(raw);
+      const payload = {
+        elements: data.elements || [],
+        pages: data.pages || [{ id: 1, name: "Page 1", active: true }],
+        canvasSettings: data.canvasSettings || { zoom: 75, panOffset: { x: 40, y: 30 }, showGrid: true, gridSize: 40, gridStyle: "lines" },
+        name: data.name || data.prompt || "Generated UI",
+      };
+      applyWorkspaceData(payload);
+      persistWorkspaceBackup(payload);
+      await createProject(payload.name, payload, "design");
+      localStorage.removeItem("protocraft:imported-ui");
+      const url = new URL(window.location.href);
+      url.searchParams.delete("import");
+      url.searchParams.delete("source");
+      window.history.replaceState({}, "", url.toString());
+      setLeftSidebarView("workspace");
+    } catch {
+      // no-op
+    }
+  }, [applyWorkspaceData, createProject, persistWorkspaceBackup]);
+
   // Handle import from Generate UI page
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("import") === "generated") {
       const raw = localStorage.getItem("protocraft:imported-ui");
-      if (raw) {
-        try {
-          const data = JSON.parse(raw);
-          if (data.elements && data.elements.length > 0) {
-            setElements(prev => [...prev, ...data.elements]);
-            const maxId = Math.max(...data.elements.map((e: any) => e.id || 0), nextId);
-            nextId = maxId + 1;
-          }
-          localStorage.removeItem("protocraft:imported-ui");
-          // Clean the URL
-          const url = new URL(window.location.href);
-          url.searchParams.delete("import");
-          window.history.replaceState({}, "", url.toString());
-        } catch {}
-      }
+      if (raw) void handleImportGeneratedUi(raw);
     }
-  }, []);
+  }, [handleImportGeneratedUi]);
+
+  useEffect(() => {
+    const backup = {
+      elements,
+      pages,
+      canvasSettings: { zoom, panOffset, showGrid, gridSize, gridStyle },
+      name: projectName,
+    };
+    persistWorkspaceBackup(backup);
+  }, [elements, gridSize, gridStyle, pages, panOffset, persistWorkspaceBackup, projectName, showGrid, zoom]);
+
+  useEffect(() => {
+    if (elements.length > 0 || projectId) return;
+    try {
+      const raw = window.localStorage.getItem("protocraft:workspace-backup");
+      if (!raw || raw === hydratedBackupRef.current) return;
+      const data = JSON.parse(raw);
+      hydratedBackupRef.current = raw;
+      applyWorkspaceData(data);
+    } catch {
+      // no-op
+    }
+  }, [applyWorkspaceData, elements.length, projectId]);
+
+  useEffect(() => {
+    if (!showProjectBrowser) return;
+    void refreshRecentProjects();
+  }, [refreshRecentProjects, showProjectBrowser]);
 
   useEffect(() => {
     if (selectedId !== null) setLastSelectedId(selectedId);
   }, [selectedId]);
+
+  useEffect(() => {
+    return () => {
+      if (focusTimerRef.current) clearTimeout(focusTimerRef.current);
+    };
+  }, []);
 
   // Focus find input when tab changes
   useEffect(() => {
@@ -724,16 +827,22 @@ const WorkspaceCanvas = () => {
   };
 
   const handleNewProject = (width: number, height: number, name: string) => {
-    pushHistory();
     const newFrame: CanvasElement = {
       id: nextId++, type: "Frame", x: 100, y: 100, w: width > 2000 ? width / 2 : width, h: height > 2000 ? height / 2 : height,
       label: name, fillColor: "#1a1a2e", strokeColor: "hsl(263, 70%, 58%)", strokeWidth: 1,
       opacity: 100, rotation: 0, cornerRadius: 0, visible: true, locked: false,
     };
-    setElements(prev => [...prev, newFrame]);
+    const nextProject = {
+      elements: [newFrame],
+      pages: [{ id: 1, name: "Page 1", active: true }],
+      canvasSettings: { zoom: 100, panOffset: { x: 0, y: 0 }, showGrid: true, gridSize: 40, gridStyle: "lines" },
+      name,
+    };
+    applyWorkspaceData(nextProject);
+    persistWorkspaceBackup(nextProject);
+    void createProject(name, nextProject, "design");
     setSelectedId(newFrame.id);
     setLeftSidebarView("workspace");
-    setProjectName(name);
   };
 
   // Handle template selection from TemplatePickerModal
@@ -1215,6 +1324,10 @@ const WorkspaceCanvas = () => {
           className="p-1.5 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
           <LayoutTemplate className="w-4 h-4" />
         </button>
+        <button onClick={() => setShowProjectBrowser(true)} title="Open previous projects"
+          className="p-1.5 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
+          <FolderPlus className="w-4 h-4" />
+        </button>
 
         <div className="flex-1" />
 
@@ -1417,7 +1530,7 @@ const WorkspaceCanvas = () => {
                               if (e.shiftKey) {
                                 setMultiSelect(prev => prev.includes(el.id) ? prev.filter(id => id !== el.id) : [...prev, el.id]);
                               } else {
-                                setSelectedId(el.id);
+                                focusElementInCanvas(el.id);
                                 setMultiSelect([]);
                               }
                             }}>
@@ -1650,6 +1763,7 @@ const WorkspaceCanvas = () => {
               {elements.filter(el => el.visible).map(el => (
                 <div
                   key={el.id}
+                  data-element-id={el.id}
                   className={`absolute ${el.locked ? "pointer-events-none opacity-60" : "cursor-move"}`}
                   style={{
                     left: el.x, top: el.y,
@@ -1734,6 +1848,9 @@ const WorkspaceCanvas = () => {
                         <div className="w-px h-3 bg-primary mx-auto" />
                       </div>
                     </>
+                  )}
+                  {focusedElementId === el.id && (
+                    <div className="absolute -inset-3 rounded-[20px] border-2 border-primary/70 pointer-events-none animate-pulse" />
                   )}
                   {selectedId === el.id && (
                     <div className="absolute -bottom-5 left-0 text-[9px] text-primary font-medium whitespace-nowrap">
@@ -1853,6 +1970,43 @@ const WorkspaceCanvas = () => {
                 </button>
               ))}
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showProjectBrowser && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm p-4">
+            <motion.div initial={{ scale: 0.96, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.96, opacity: 0 }} className="glass-strong rounded-2xl border border-border/30 w-full max-w-2xl max-h-[80vh] overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-border/20">
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">Previous projects</h2>
+                  <p className="text-xs text-muted-foreground">Open any saved workspace and continue editing it.</p>
+                </div>
+                <button onClick={() => setShowProjectBrowser(false)} className="p-1 rounded hover:bg-secondary/60 text-muted-foreground"><X className="w-4 h-4" /></button>
+              </div>
+              <div className="p-4 space-y-2 overflow-y-auto max-h-[60vh]">
+                {projectBrowserLoading ? (
+                  <div className="py-10 text-center text-sm text-muted-foreground">Loading projects…</div>
+                ) : recentProjects.length === 0 ? (
+                  <div className="py-10 text-center text-sm text-muted-foreground">No saved projects yet.</div>
+                ) : (
+                  recentProjects.map((project) => (
+                    <button
+                      key={project.id}
+                      onClick={() => void handleOpenExistingProject(project.id)}
+                      className={`w-full flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-colors ${project.id === projectId ? "border-primary/40 bg-primary/10" : "border-border/20 hover:bg-secondary/40"}`}
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-foreground">{project.name}</p>
+                        <p className="text-xs text-muted-foreground">{new Date(project.updated_at).toLocaleString()}</p>
+                      </div>
+                      {project.id === projectId && <span className="text-[10px] font-semibold text-primary">Current</span>}
+                    </button>
+                  ))
+                )}
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

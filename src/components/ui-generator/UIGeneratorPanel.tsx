@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
+import { generatedUiToWorkspacePayload } from "./workspaceTransfer";
 
 const GENERATE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-ui`;
 
@@ -38,6 +39,8 @@ const UIGeneratorPanel = () => {
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const listeningRef = useRef(false);
+  const stopRequestedRef = useRef(false);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -51,11 +54,13 @@ const UIGeneratorPanel = () => {
 
   // Stop recognition gracefully
   const stopListening = useCallback(() => {
+    stopRequestedRef.current = true;
     clearSilenceTimer();
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch {}
-      recognitionRef.current = null;
     }
+    recognitionRef.current = null;
+    listeningRef.current = false;
     setIsListening(false);
     setInterimText("");
   }, [clearSilenceTimer]);
@@ -74,9 +79,10 @@ const UIGeneratorPanel = () => {
     }
 
     const recognition = new SR();
-    recognition.continuous = true;
+    recognition.continuous = false;
     recognition.interimResults = true;
     recognition.lang = "en-US";
+    stopRequestedRef.current = false;
 
     // Reset silence timer on each result
     const resetSilenceTimer = () => {
@@ -106,25 +112,38 @@ const UIGeneratorPanel = () => {
     };
 
     recognition.onend = () => {
-      // Don't restart — we want it to stop
+      recognitionRef.current = null;
+      listeningRef.current = false;
       setIsListening(false);
       clearSilenceTimer();
+      setInterimText("");
     };
 
     recognition.onerror = (e: any) => {
       if (e.error === "not-allowed") {
         toast({ title: "Microphone blocked", description: "Allow mic access in browser settings", variant: "destructive" });
+      } else if (e.error === "audio-capture") {
+        toast({ title: "Microphone unavailable", description: "Check that your microphone is connected and not used by another app", variant: "destructive" });
+      } else if (e.error !== "aborted" && e.error !== "no-speech") {
+        toast({ title: "Voice input failed", description: "Please try again", variant: "destructive" });
       }
       stopListening();
     };
 
     recognitionRef.current = recognition;
+    listeningRef.current = true;
     setIsListening(true);
-    recognition.start();
-    // Start the initial silence timer
-    silenceTimerRef.current = setTimeout(() => {
-      stopListening();
-    }, SILENCE_TIMEOUT_MS + 1000); // Give extra 1s for initial start
+    try {
+      recognition.start();
+      silenceTimerRef.current = setTimeout(() => {
+        if (listeningRef.current && !stopRequestedRef.current) stopListening();
+      }, SILENCE_TIMEOUT_MS);
+    } catch {
+      recognitionRef.current = null;
+      listeningRef.current = false;
+      setIsListening(false);
+      toast({ title: "Voice input failed", description: "Please tap the microphone again", variant: "destructive" });
+    }
   }, [isListening, toast, stopListening, clearSilenceTimer]);
 
   // Stop voice when unmount
@@ -174,67 +193,11 @@ const UIGeneratorPanel = () => {
   // Convert generated UI to workspace elements
   const handleConvertToWorkspace = useCallback(() => {
     if (!generatedUI) return;
-
-    // Create workspace elements from the generated HTML
-    const elements: any[] = [];
-    let nextId = Date.now();
-
-    // Create a main frame containing the generated UI as an embedded HTML element
-    const frameEl = {
-      id: nextId++,
-      type: "Frame",
-      label: prompt || "Generated UI",
-      x: 100,
-      y: 100,
-      w: 1440,
-      h: 900,
-      fillColor: "#ffffff",
-      strokeColor: "hsl(263, 70%, 58%)",
-      strokeWidth: 1,
-      opacity: 100,
-      rotation: 0,
-      cornerRadius: 0,
-      visible: true,
-      locked: false,
-    };
-    elements.push(frameEl);
-
-    // Add a text label
-    elements.push({
-      id: nextId++,
-      type: "Text",
-      label: "Title",
-      x: 120,
-      y: 120,
-      w: 400,
-      h: 40,
-      text: prompt || "Generated UI",
-      fontSize: 24,
-      fontWeight: "700",
-      fontFamily: "Inter",
-      textAlign: "left",
-      fillColor: "#333333",
-      strokeColor: "transparent",
-      strokeWidth: 0,
-      opacity: 100,
-      rotation: 0,
-      cornerRadius: 0,
-      visible: true,
-      locked: false,
-    });
-
-    // Store the generated HTML as embedded content metadata
-    const htmlContent = `<!DOCTYPE html><html><head><style>${generatedUI.css}</style></head><body>${generatedUI.html}${generatedUI.js ? `<script>${generatedUI.js}<\/script>` : ""}</body></html>`;
-    
-    // Save to localStorage so workspace can pick it up
-    localStorage.setItem("protocraft:imported-ui", JSON.stringify({
-      elements,
-      htmlContent,
-      prompt: prompt || "Generated UI",
-    }));
+    const payload = generatedUiToWorkspacePayload(generatedUI, prompt || "Generated UI");
+    localStorage.setItem("protocraft:imported-ui", JSON.stringify(payload));
 
     toast({ title: "Converting to Workspace", description: "Opening workspace with your generated UI..." });
-    navigate("/workspace?import=generated");
+    navigate("/workspace?import=generated&source=generator");
   }, [generatedUI, prompt, navigate, toast]);
 
   // Build iframe srcdoc
