@@ -1324,6 +1324,10 @@ const WorkspaceCanvas = () => {
           className="p-1.5 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
           <LayoutTemplate className="w-4 h-4" />
         </button>
+        <button onClick={() => setShowProjectBrowser(true)} title="Open previous projects"
+          className="p-1.5 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
+          <FolderPlus className="w-4 h-4" />
+        </button>
 
         <div className="flex-1" />
 
@@ -1526,7 +1530,7 @@ const WorkspaceCanvas = () => {
                               if (e.shiftKey) {
                                 setMultiSelect(prev => prev.includes(el.id) ? prev.filter(id => id !== el.id) : [...prev, el.id]);
                               } else {
-                                setSelectedId(el.id);
+                                focusElementInCanvas(el.id);
                                 setMultiSelect([]);
                               }
                             }}>
@@ -1759,6 +1763,7 @@ const WorkspaceCanvas = () => {
               {elements.filter(el => el.visible).map(el => (
                 <div
                   key={el.id}
+                  data-element-id={el.id}
                   className={`absolute ${el.locked ? "pointer-events-none opacity-60" : "cursor-move"}`}
                   style={{
                     left: el.x, top: el.y,
@@ -1843,6 +1848,9 @@ const WorkspaceCanvas = () => {
                         <div className="w-px h-3 bg-primary mx-auto" />
                       </div>
                     </>
+                  )}
+                  {focusedElementId === el.id && (
+                    <div className="absolute -inset-3 rounded-[20px] border-2 border-primary/70 pointer-events-none animate-pulse" />
                   )}
                   {selectedId === el.id && (
                     <div className="absolute -bottom-5 left-0 text-[9px] text-primary font-medium whitespace-nowrap">
