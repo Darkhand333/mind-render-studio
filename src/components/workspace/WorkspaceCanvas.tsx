@@ -136,28 +136,114 @@ const WorkspaceCanvas = () => {
 
   // Voice command listener is set up after handleVoiceCommand is defined (below)
 
+  const persistWorkspaceBackup = useCallback((payload: { elements: any[]; pages: any[]; canvasSettings: any; name: string }) => {
+    try {
+      const serialized = JSON.stringify(payload);
+      hydratedBackupRef.current = serialized;
+      window.localStorage.setItem("protocraft:workspace-backup", serialized);
+    } catch {
+      // no-op
+    }
+  }, []);
+
+  const focusElementInCanvas = useCallback((elementId: number) => {
+    const el = elements.find((item) => item.id === elementId);
+    const canvas = canvasRef.current;
+    if (!el || !canvas) return;
+
+    const canvasRect = canvas.getBoundingClientRect();
+    const targetZoom = Math.max(60, Math.min(zoom, 120));
+    const scale = targetZoom / 100;
+    const margin = 80;
+    const nextPan = {
+      x: canvasRect.width / 2 - (el.x + el.w / 2) * scale,
+      y: canvasRect.height / 2 - (el.y + el.h / 2) * scale,
+    };
+
+    setZoom(targetZoom);
+    setPanOffset(nextPan);
+    setSelectedId(elementId);
+    setLastSelectedId(elementId);
+    setFocusedElementId(elementId);
+
+    if (focusTimerRef.current) clearTimeout(focusTimerRef.current);
+    focusTimerRef.current = setTimeout(() => setFocusedElementId(null), 1800);
+  }, [elements, zoom]);
+
+  const refreshRecentProjects = useCallback(async () => {
+    setProjectBrowserLoading(true);
+    try {
+      const projects = await listProjects(30);
+      setRecentProjects(projects);
+    } finally {
+      setProjectBrowserLoading(false);
+    }
+  }, [listProjects]);
+
+  const handleOpenExistingProject = useCallback(async (pid: string) => {
+    await loadProject(pid);
+    setShowProjectBrowser(false);
+  }, [loadProject]);
+
+  const handleImportGeneratedUi = useCallback(async (raw: string) => {
+    try {
+      const data = JSON.parse(raw);
+      const payload = {
+        elements: data.elements || [],
+        pages: data.pages || [{ id: 1, name: "Page 1", active: true }],
+        canvasSettings: data.canvasSettings || { zoom: 75, panOffset: { x: 40, y: 30 }, showGrid: true, gridSize: 40, gridStyle: "lines" },
+        name: data.name || data.prompt || "Generated UI",
+      };
+      applyWorkspaceData(payload);
+      persistWorkspaceBackup(payload);
+      await createProject(payload.name, payload, "design");
+      localStorage.removeItem("protocraft:imported-ui");
+      const url = new URL(window.location.href);
+      url.searchParams.delete("import");
+      url.searchParams.delete("source");
+      window.history.replaceState({}, "", url.toString());
+      setLeftSidebarView("workspace");
+    } catch {
+      // no-op
+    }
+  }, [applyWorkspaceData, createProject, persistWorkspaceBackup]);
+
   // Handle import from Generate UI page
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("import") === "generated") {
       const raw = localStorage.getItem("protocraft:imported-ui");
-      if (raw) {
-        try {
-          const data = JSON.parse(raw);
-          if (data.elements && data.elements.length > 0) {
-            setElements(prev => [...prev, ...data.elements]);
-            const maxId = Math.max(...data.elements.map((e: any) => e.id || 0), nextId);
-            nextId = maxId + 1;
-          }
-          localStorage.removeItem("protocraft:imported-ui");
-          // Clean the URL
-          const url = new URL(window.location.href);
-          url.searchParams.delete("import");
-          window.history.replaceState({}, "", url.toString());
-        } catch {}
-      }
+      if (raw) void handleImportGeneratedUi(raw);
     }
-  }, []);
+  }, [handleImportGeneratedUi]);
+
+  useEffect(() => {
+    const backup = {
+      elements,
+      pages,
+      canvasSettings: { zoom, panOffset, showGrid, gridSize, gridStyle },
+      name: projectName,
+    };
+    persistWorkspaceBackup(backup);
+  }, [elements, gridSize, gridStyle, pages, panOffset, persistWorkspaceBackup, projectName, showGrid, zoom]);
+
+  useEffect(() => {
+    if (elements.length > 0 || projectId) return;
+    try {
+      const raw = window.localStorage.getItem("protocraft:workspace-backup");
+      if (!raw || raw === hydratedBackupRef.current) return;
+      const data = JSON.parse(raw);
+      hydratedBackupRef.current = raw;
+      applyWorkspaceData(data);
+    } catch {
+      // no-op
+    }
+  }, [applyWorkspaceData, elements.length, projectId]);
+
+  useEffect(() => {
+    if (!showProjectBrowser) return;
+    void refreshRecentProjects();
+  }, [refreshRecentProjects, showProjectBrowser]);
 
   useEffect(() => {
     if (selectedId !== null) setLastSelectedId(selectedId);
