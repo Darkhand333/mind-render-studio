@@ -41,6 +41,8 @@ const UIGeneratorPanel = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const listeningRef = useRef(false);
   const stopRequestedRef = useRef(false);
+  const promptBeforeListeningRef = useRef("");
+  const finalTranscriptRef = useRef("");
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -52,18 +54,29 @@ const UIGeneratorPanel = () => {
     }
   }, []);
 
+  const syncPromptWithTranscript = useCallback((interim = "") => {
+    const nextPrompt = [promptBeforeListeningRef.current, finalTranscriptRef.current, interim]
+      .filter(Boolean)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    setPrompt(nextPrompt);
+    setInterimText(interim);
+  }, []);
+
   // Stop recognition gracefully
   const stopListening = useCallback(() => {
     stopRequestedRef.current = true;
     clearSilenceTimer();
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch {}
+    } else {
+      listeningRef.current = false;
+      setIsListening(false);
+      syncPromptWithTranscript("");
     }
-    recognitionRef.current = null;
-    listeningRef.current = false;
-    setIsListening(false);
-    setInterimText("");
-  }, [clearSilenceTimer]);
+  }, [clearSilenceTimer, syncPromptWithTranscript]);
 
   // Voice input with auto-stop after 2s silence
   const toggleVoice = useCallback(() => {
@@ -78,8 +91,12 @@ const UIGeneratorPanel = () => {
       return;
     }
 
+    promptBeforeListeningRef.current = prompt.trim();
+    finalTranscriptRef.current = "";
+    syncPromptWithTranscript("");
+
     const recognition = new SR();
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
     stopRequestedRef.current = false;
@@ -95,18 +112,15 @@ const UIGeneratorPanel = () => {
 
     recognition.onresult = (e: any) => {
       let interim = "";
-      let final = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) final += t;
-        else interim += t;
+        if (e.results[i].isFinal) {
+          finalTranscriptRef.current = [finalTranscriptRef.current, t].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+        } else {
+          interim += t;
+        }
       }
-      if (final) {
-        setPrompt((prev) => (prev ? prev + " " + final : final).trim());
-        setInterimText("");
-      } else {
-        setInterimText(interim);
-      }
+      syncPromptWithTranscript(interim.trim());
       // Reset the silence timer every time we get speech input
       resetSilenceTimer();
     };
@@ -116,7 +130,7 @@ const UIGeneratorPanel = () => {
       listeningRef.current = false;
       setIsListening(false);
       clearSilenceTimer();
-      setInterimText("");
+      syncPromptWithTranscript("");
     };
 
     recognition.onerror = (e: any) => {
@@ -127,7 +141,11 @@ const UIGeneratorPanel = () => {
       } else if (e.error !== "aborted" && e.error !== "no-speech") {
         toast({ title: "Voice input failed", description: "Please try again", variant: "destructive" });
       }
-      stopListening();
+      recognitionRef.current = null;
+      listeningRef.current = false;
+      setIsListening(false);
+      clearSilenceTimer();
+      syncPromptWithTranscript("");
     };
 
     recognitionRef.current = recognition;
@@ -135,6 +153,7 @@ const UIGeneratorPanel = () => {
     setIsListening(true);
     try {
       recognition.start();
+      textareaRef.current?.focus();
       silenceTimerRef.current = setTimeout(() => {
         if (listeningRef.current && !stopRequestedRef.current) stopListening();
       }, SILENCE_TIMEOUT_MS);
@@ -142,9 +161,10 @@ const UIGeneratorPanel = () => {
       recognitionRef.current = null;
       listeningRef.current = false;
       setIsListening(false);
+      syncPromptWithTranscript("");
       toast({ title: "Voice input failed", description: "Please tap the microphone again", variant: "destructive" });
     }
-  }, [isListening, toast, stopListening, clearSilenceTimer]);
+  }, [isListening, prompt, toast, stopListening, clearSilenceTimer, syncPromptWithTranscript]);
 
   // Stop voice when unmount
   useEffect(() => {
@@ -285,7 +305,7 @@ ${generatedUI.js ? `<script>${generatedUI.js}<\/script>` : ""}
               }}
               placeholder={isListening ? "Listening... speak your UI idea (stops automatically)" : "Describe the UI you want to create..."}
               rows={2}
-              className="w-full bg-secondary/40 rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-primary/50 transition-shadow resize-none"
+              className="w-full rounded-xl border border-border/60 bg-card/90 px-4 py-3 text-sm text-foreground placeholder:text-foreground/60 outline-none focus:ring-1 focus:ring-primary/50 transition-shadow resize-none"
             />
             {interimText && (
               <p className="absolute bottom-1 left-4 text-xs text-muted-foreground italic truncate max-w-[80%]">
@@ -324,7 +344,7 @@ ${generatedUI.js ? `<script>${generatedUI.js}<\/script>` : ""}
               <button
                 key={ex}
                 onClick={() => { setPrompt(ex); textareaRef.current?.focus(); }}
-                className="px-3 py-1.5 rounded-lg bg-secondary/40 text-xs text-muted-foreground hover:bg-secondary/60 hover:text-foreground transition-colors"
+                className="px-3 py-1.5 rounded-lg border border-border/60 bg-card/90 text-xs text-foreground hover:bg-card transition-colors"
               >
                 {ex}
               </button>
@@ -388,20 +408,20 @@ ${generatedUI.js ? `<script>${generatedUI.js}<\/script>` : ""}
                 )}
                 {/* Convert to Workspace */}
                 <button onClick={handleConvertToWorkspace}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/15 text-sm text-primary font-medium hover:bg-primary/25 transition-colors">
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/60 bg-card/90 text-sm text-foreground font-medium hover:bg-card transition-colors">
                   <Layout className="w-3.5 h-3.5" /> Open in Workspace
                 </button>
                 <button onClick={handleCopy}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary/50 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/60 bg-card/90 text-sm text-foreground hover:bg-card transition-colors">
                   {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
                   {copied ? "Copied" : "Copy"}
                 </button>
                 <button onClick={handleDownload}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary/50 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/60 bg-card/90 text-sm text-foreground hover:bg-card transition-colors">
                   <Download className="w-3.5 h-3.5" /> Download
                 </button>
                 <button onClick={() => { setGeneratedUI(null); setPrompt(""); }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary/50 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/60 bg-card/90 text-sm text-foreground hover:bg-card transition-colors">
                   <RotateCcw className="w-3.5 h-3.5" /> New
                 </button>
               </div>

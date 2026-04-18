@@ -1802,7 +1802,15 @@ const WorkspaceCanvas = () => {
                   }}
                   onDoubleClick={e => { e.stopPropagation(); if (el.type === "Text") setEditingTextId(el.id); }}
                 >
-                  {el.type === "Image" && el.imageUrl ? (
+                  {el.htmlContent ? (
+                    <iframe
+                      title={el.label}
+                      srcDoc={el.htmlContent}
+                      sandbox="allow-scripts allow-forms allow-modals"
+                      loading="lazy"
+                      className="block h-full w-full rounded-[inherit] border-0 bg-white pointer-events-none"
+                    />
+                  ) : el.type === "Image" && el.imageUrl ? (
                     <img src={el.imageUrl} alt={el.label}
                       className="w-full h-full rounded select-none pointer-events-none"
                       draggable={false}
