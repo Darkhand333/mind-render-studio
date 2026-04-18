@@ -50,6 +50,7 @@ export type CanvasElement = {
   imageObjectFit?: string;
   imageGrayscale?: number;
   imageHueRotate?: number;
+  htmlContent?: string;
   // Grouping
   groupId?: number;
   isGroup?: boolean;
