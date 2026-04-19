@@ -55,16 +55,21 @@ const UIGeneratorPanel = () => {
   }, []);
 
   // Stop recognition gracefully
+  const resetRecognitionState = useCallback(() => {
+    recognitionRef.current = null;
+    listeningRef.current = false;
+    setIsListening(false);
+    setInterimText("");
+  }, []);
+
   const stopListening = useCallback(() => {
     stopRequestedRef.current = true;
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch {}
     } else {
-      listeningRef.current = false;
-      setIsListening(false);
-      syncPromptWithTranscript("");
+      resetRecognitionState();
     }
-  }, [syncPromptWithTranscript]);
+  }, [resetRecognitionState]);
 
   const toggleVoice = useCallback(() => {
     if (isListening) {
@@ -78,83 +83,104 @@ const UIGeneratorPanel = () => {
       return;
     }
 
-    const recognition = new SR();
-    recognitionRef.current = recognition;
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = "en-US";
-
     promptBeforeListeningRef.current = prompt.trim();
     finalTranscriptRef.current = "";
     syncPromptWithTranscript("");
     stopRequestedRef.current = false;
 
-    recognition.onresult = (e: any) => {
-      let interim = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) {
-          finalTranscriptRef.current = [finalTranscriptRef.current, t].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
-        } else {
-          interim += t;
+    const startRecognition = async () => {
+      if (navigator.mediaDevices?.getUserMedia) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          stream.getTracks().forEach((track) => track.stop());
+        } catch {
+          toast({ title: "Microphone blocked", description: "Allow microphone access in your browser settings", variant: "destructive" });
+          resetRecognitionState();
+          return;
         }
       }
-      syncPromptWithTranscript(interim.trim());
-    };
 
-    recognition.onend = () => {
-      recognitionRef.current = null;
-      listeningRef.current = false;
-      setIsListening(false);
-      syncPromptWithTranscript("");
+      const recognition = new SR();
+      recognitionRef.current = recognition;
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+      recognition.maxAlternatives = 1;
 
-      if (!stopRequestedRef.current) {
-        stopRequestedRef.current = false;
+      recognition.onstart = () => {
+        listeningRef.current = true;
+        setIsListening(true);
+        textareaRef.current?.focus();
+      };
+
+      recognition.onresult = (e: any) => {
+        let interim = "";
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const transcriptChunk = e.results[i][0]?.transcript || "";
+          if (e.results[i].isFinal) {
+            finalTranscriptRef.current = [finalTranscriptRef.current, transcriptChunk]
+              .filter(Boolean)
+              .join(" ")
+              .replace(/\s+/g, " ")
+              .trim();
+          } else {
+            interim += transcriptChunk;
+          }
+        }
+        syncPromptWithTranscript(interim.trim());
+      };
+
+      recognition.onerror = (e: any) => {
+        if (e.error === "no-speech") {
+          return;
+        }
+
+        if (e.error === "aborted" && stopRequestedRef.current) {
+          resetRecognitionState();
+          return;
+        }
+
+        if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+          toast({ title: "Microphone blocked", description: "Allow microphone access in your browser settings", variant: "destructive" });
+        } else if (e.error === "audio-capture") {
+          toast({ title: "Microphone unavailable", description: "Check your microphone connection and try again", variant: "destructive" });
+        } else if (e.error === "network") {
+          toast({ title: "Voice input failed", description: "Speech recognition is unavailable right now. Please try again.", variant: "destructive" });
+        }
+
+        stopRequestedRef.current = true;
+        resetRecognitionState();
+      };
+
+      recognition.onend = () => {
+        if (stopRequestedRef.current) {
+          resetRecognitionState();
+          return;
+        }
+
+        window.setTimeout(() => {
+          if (!stopRequestedRef.current) {
+            void startRecognition();
+          }
+        }, 120);
+      };
+
+      try {
+        recognition.start();
+      } catch {
+        toast({ title: "Voice input failed", description: "Please tap the microphone again", variant: "destructive" });
+        stopRequestedRef.current = true;
+        resetRecognitionState();
       }
     };
 
-    recognition.onerror = (e: any) => {
-      if (e.error === "aborted") {
-        recognitionRef.current = null;
-        listeningRef.current = false;
-        setIsListening(false);
-        syncPromptWithTranscript("");
-        return;
-      }
-
-      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-        toast({ title: "Microphone blocked", description: "Allow mic access in browser settings", variant: "destructive" });
-      } else if (e.error === "audio-capture") {
-        toast({ title: "Microphone unavailable", description: "Check that your microphone is connected and not used by another app", variant: "destructive" });
-      } else if (e.error === "network") {
-        toast({ title: "Voice input failed", description: "Speech service is unavailable right now. Please try again.", variant: "destructive" });
-      } else if (e.error !== "no-speech") {
-        toast({ title: "Voice input failed", description: "Please speak again after tapping the microphone.", variant: "destructive" });
-      }
-      recognitionRef.current = null;
-      listeningRef.current = false;
-      setIsListening(false);
-      syncPromptWithTranscript("");
-    };
-
-    listeningRef.current = true;
-    setIsListening(true);
-    try {
-      recognition.start();
-      textareaRef.current?.focus();
-    } catch {
-      recognitionRef.current = null;
-      listeningRef.current = false;
-      setIsListening(false);
-      syncPromptWithTranscript("");
-      toast({ title: "Voice input failed", description: "Please tap the microphone again", variant: "destructive" });
-    }
-  }, [isListening, prompt, toast, stopListening, syncPromptWithTranscript]);
+    void startRecognition();
+  }, [isListening, prompt, toast, stopListening, syncPromptWithTranscript, resetRecognitionState]);
 
   // Stop voice when unmount
   useEffect(() => {
     return () => {
-      recognitionRef.current?.abort();
+      try { recognitionRef.current?.abort(); } catch {}
     };
   }, []);
 
@@ -195,13 +221,16 @@ const UIGeneratorPanel = () => {
   }, [prompt, isListening, toast, stopListening]);
 
   // Convert generated UI to workspace elements
-  const handleConvertToWorkspace = useCallback(() => {
+  const handleConvertToWorkspace = useCallback(async () => {
     if (!generatedUI) return;
-    const payload = generatedUiToWorkspacePayload(generatedUI, prompt || "Generated UI");
-    localStorage.setItem("protocraft:imported-ui", JSON.stringify(payload));
-
-    toast({ title: "Converting to Workspace", description: "Opening workspace with your generated UI..." });
-    navigate("/workspace?import=generated&source=generator");
+    try {
+      const payload = await generatedUiToWorkspacePayload(generatedUI, prompt || "Generated UI");
+      localStorage.setItem("protocraft:imported-ui", JSON.stringify(payload));
+      toast({ title: "Converting to Workspace", description: "Opening workspace with your generated UI..." });
+      navigate("/workspace?import=generated&source=generator");
+    } catch {
+      toast({ title: "Workspace transfer failed", description: "Please try opening the generated UI again.", variant: "destructive" });
+    }
   }, [generatedUI, prompt, navigate, toast]);
 
   // Build iframe srcdoc
