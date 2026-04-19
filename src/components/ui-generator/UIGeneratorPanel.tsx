@@ -23,8 +23,6 @@ const EXAMPLE_PROMPTS = [
   "Signup page with social login buttons",
 ];
 
-const SILENCE_TIMEOUT_MS = 2000;
-
 const UIGeneratorPanel = () => {
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -36,7 +34,6 @@ const UIGeneratorPanel = () => {
   const [copied, setCopied] = useState(false);
   const [history, setHistory] = useState<{ prompt: string; ui: GeneratedUI }[]>([]);
   const recognitionRef = useRef<any>(null);
-  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const listeningRef = useRef(false);
@@ -45,14 +42,6 @@ const UIGeneratorPanel = () => {
   const finalTranscriptRef = useRef("");
   const { toast } = useToast();
   const navigate = useNavigate();
-
-  // Clear silence timer
-  const clearSilenceTimer = useCallback(() => {
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
-    }
-  }, []);
 
   const syncPromptWithTranscript = useCallback((interim = "") => {
     const nextPrompt = [promptBeforeListeningRef.current, finalTranscriptRef.current, interim]
@@ -68,7 +57,6 @@ const UIGeneratorPanel = () => {
   // Stop recognition gracefully
   const stopListening = useCallback(() => {
     stopRequestedRef.current = true;
-    clearSilenceTimer();
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch {}
     } else {
@@ -76,9 +64,8 @@ const UIGeneratorPanel = () => {
       setIsListening(false);
       syncPromptWithTranscript("");
     }
-  }, [clearSilenceTimer, syncPromptWithTranscript]);
+  }, [syncPromptWithTranscript]);
 
-  // Voice input with auto-stop after 2s silence
   const toggleVoice = useCallback(() => {
     if (isListening) {
       stopListening();
@@ -91,24 +78,16 @@ const UIGeneratorPanel = () => {
       return;
     }
 
-    promptBeforeListeningRef.current = prompt.trim();
-    finalTranscriptRef.current = "";
-    syncPromptWithTranscript("");
-
     const recognition = new SR();
+    recognitionRef.current = recognition;
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
-    stopRequestedRef.current = false;
 
-    // Reset silence timer on each result
-    const resetSilenceTimer = () => {
-      clearSilenceTimer();
-      silenceTimerRef.current = setTimeout(() => {
-        // Auto-stop after 2s of silence
-        stopListening();
-      }, SILENCE_TIMEOUT_MS);
-    };
+    promptBeforeListeningRef.current = prompt.trim();
+    finalTranscriptRef.current = "";
+    syncPromptWithTranscript("");
+    stopRequestedRef.current = false;
 
     recognition.onresult = (e: any) => {
       let interim = "";
@@ -121,42 +100,48 @@ const UIGeneratorPanel = () => {
         }
       }
       syncPromptWithTranscript(interim.trim());
-      // Reset the silence timer every time we get speech input
-      resetSilenceTimer();
     };
 
     recognition.onend = () => {
       recognitionRef.current = null;
       listeningRef.current = false;
       setIsListening(false);
-      clearSilenceTimer();
       syncPromptWithTranscript("");
+
+      if (!stopRequestedRef.current) {
+        stopRequestedRef.current = false;
+      }
     };
 
     recognition.onerror = (e: any) => {
-      if (e.error === "not-allowed") {
+      if (e.error === "aborted") {
+        recognitionRef.current = null;
+        listeningRef.current = false;
+        setIsListening(false);
+        syncPromptWithTranscript("");
+        return;
+      }
+
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
         toast({ title: "Microphone blocked", description: "Allow mic access in browser settings", variant: "destructive" });
       } else if (e.error === "audio-capture") {
         toast({ title: "Microphone unavailable", description: "Check that your microphone is connected and not used by another app", variant: "destructive" });
-      } else if (e.error !== "aborted" && e.error !== "no-speech") {
-        toast({ title: "Voice input failed", description: "Please try again", variant: "destructive" });
+      } else if (e.error === "network") {
+        toast({ title: "Voice input failed", description: "Speech service is unavailable right now. Please try again.", variant: "destructive" });
+      } else if (e.error !== "no-speech") {
+        toast({ title: "Voice input failed", description: "Please speak again after tapping the microphone.", variant: "destructive" });
       }
       recognitionRef.current = null;
       listeningRef.current = false;
       setIsListening(false);
-      clearSilenceTimer();
       syncPromptWithTranscript("");
     };
 
-    recognitionRef.current = recognition;
     listeningRef.current = true;
     setIsListening(true);
     try {
       recognition.start();
       textareaRef.current?.focus();
-      silenceTimerRef.current = setTimeout(() => {
-        if (listeningRef.current && !stopRequestedRef.current) stopListening();
-      }, SILENCE_TIMEOUT_MS);
     } catch {
       recognitionRef.current = null;
       listeningRef.current = false;
@@ -164,15 +149,14 @@ const UIGeneratorPanel = () => {
       syncPromptWithTranscript("");
       toast({ title: "Voice input failed", description: "Please tap the microphone again", variant: "destructive" });
     }
-  }, [isListening, prompt, toast, stopListening, clearSilenceTimer, syncPromptWithTranscript]);
+  }, [isListening, prompt, toast, stopListening, syncPromptWithTranscript]);
 
   // Stop voice when unmount
   useEffect(() => {
     return () => {
       recognitionRef.current?.abort();
-      clearSilenceTimer();
     };
-  }, [clearSilenceTimer]);
+  }, []);
 
   const handleGenerate = useCallback(async () => {
     const text = prompt.trim();
@@ -275,7 +259,7 @@ ${generatedUI.js ? `<script>${generatedUI.js}<\/script>` : ""}
       </motion.div>
 
       {/* Input area */}
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+      <motion.div initial={{ opacity: 0, y: 0 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
         className="glass rounded-2xl p-4 mb-6 max-w-3xl mx-auto">
         <div className="flex items-end gap-3">
           {/* Voice button */}
@@ -303,9 +287,9 @@ ${generatedUI.js ? `<script>${generatedUI.js}<\/script>` : ""}
                   handleGenerate();
                 }
               }}
-              placeholder={isListening ? "Listening... speak your UI idea (stops automatically)" : "Describe the UI you want to create..."}
+              placeholder=""
               rows={2}
-              className="w-full rounded-xl border border-border/60 bg-card/90 px-4 py-3 text-sm text-foreground placeholder:text-foreground/60 outline-none focus:ring-1 focus:ring-primary/50 transition-shadow resize-none"
+              className="w-full rounded-xl border border-card bg-card px-4 py-3 text-sm text-card-foreground outline-none focus:ring-1 focus:ring-primary/50 transition-shadow resize-none"
             />
             {interimText && (
               <p className="absolute bottom-1 left-4 text-xs text-muted-foreground italic truncate max-w-[80%]">
@@ -329,7 +313,7 @@ ${generatedUI.js ? `<script>${generatedUI.js}<\/script>` : ""}
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
             className="mt-3 flex items-center gap-2 text-xs text-primary">
             <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            Listening — speak now. Stops automatically after 2 seconds of silence.
+            Listening — speak now and tap the microphone again when you want to stop.
           </motion.div>
         )}
       </motion.div>
@@ -338,13 +322,13 @@ ${generatedUI.js ? `<script>${generatedUI.js}<\/script>` : ""}
       {!generatedUI && !isGenerating && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}
           className="max-w-3xl mx-auto mb-8">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 text-center">Try an example</p>
+          <p className="sr-only">Example prompts</p>
           <div className="flex flex-wrap justify-center gap-2">
             {EXAMPLE_PROMPTS.map((ex) => (
               <button
                 key={ex}
                 onClick={() => { setPrompt(ex); textareaRef.current?.focus(); }}
-                className="px-3 py-1.5 rounded-lg border border-border/60 bg-card/90 text-xs text-foreground hover:bg-card transition-colors"
+                className="px-3 py-1.5 rounded-lg border border-card bg-card text-xs text-card-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors shadow-sm"
               >
                 {ex}
               </button>
@@ -408,20 +392,20 @@ ${generatedUI.js ? `<script>${generatedUI.js}<\/script>` : ""}
                 )}
                 {/* Convert to Workspace */}
                 <button onClick={handleConvertToWorkspace}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/60 bg-card/90 text-sm text-foreground font-medium hover:bg-card transition-colors">
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-card bg-card text-sm text-card-foreground font-medium hover:bg-secondary hover:text-secondary-foreground transition-colors shadow-sm">
                   <Layout className="w-3.5 h-3.5" /> Open in Workspace
                 </button>
                 <button onClick={handleCopy}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/60 bg-card/90 text-sm text-foreground hover:bg-card transition-colors">
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-card bg-card text-sm text-card-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors shadow-sm">
                   {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
                   {copied ? "Copied" : "Copy"}
                 </button>
                 <button onClick={handleDownload}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/60 bg-card/90 text-sm text-foreground hover:bg-card transition-colors">
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-card bg-card text-sm text-card-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors shadow-sm">
                   <Download className="w-3.5 h-3.5" /> Download
                 </button>
                 <button onClick={() => { setGeneratedUI(null); setPrompt(""); }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/60 bg-card/90 text-sm text-foreground hover:bg-card transition-colors">
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-card bg-card text-sm text-card-foreground hover:bg-secondary hover:text-secondary-foreground transition-colors shadow-sm">
                   <RotateCcw className="w-3.5 h-3.5" /> New
                 </button>
               </div>
