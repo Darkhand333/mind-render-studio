@@ -202,11 +202,26 @@ export const generatedUiToWorkspacePayload = (
   );
   const estimatedHeight = clamp(780 + sectionCount * 180, 900, 2600);
   const htmlContent = buildHtmlDocument(generatedUI);
-  const elements: CanvasElement[] = toEditableElements(documentNode, prompt).map((element, index) =>
-    index === 0 && element.type === "Frame"
-      ? { ...element, h: Math.max(element.h, estimatedHeight) }
-      : element
-  );
+  const elements: CanvasElement[] = [
+    {
+      id: 1,
+      type: "Frame",
+      x: 60,
+      y: 60,
+      w: 1440,
+      h: estimatedHeight,
+      label: prompt || "Generated UI",
+      fillColor: FRAME_FILL,
+      strokeColor: FRAME_STROKE,
+      strokeWidth: 1,
+      opacity: 100,
+      rotation: 0,
+      cornerRadius: 24,
+      visible: true,
+      locked: false,
+      htmlContent,
+    },
+  ];
 
   return {
     name: prompt || "Generated UI",
