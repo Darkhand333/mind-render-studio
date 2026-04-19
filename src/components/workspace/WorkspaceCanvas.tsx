@@ -188,8 +188,12 @@ const WorkspaceCanvas = () => {
   const handleImportGeneratedUi = useCallback(async (raw: string) => {
     try {
       const data = JSON.parse(raw);
+      const importedElements = Array.isArray(data.elements) ? data.elements.map((element: CanvasElement) => ({
+        ...element,
+        htmlContent: undefined,
+      })) : [];
       const payload = {
-        elements: data.elements || [],
+        elements: importedElements,
         pages: data.pages || [{ id: 1, name: "Page 1", active: true }],
         canvasSettings: data.canvasSettings || { zoom: 75, panOffset: { x: 40, y: 30 }, showGrid: true, gridSize: 40, gridStyle: "lines" },
         name: data.name || data.prompt || "Generated UI",
@@ -1148,7 +1152,7 @@ const WorkspaceCanvas = () => {
   };
 
   const renderShape = (el: CanvasElement) => {
-    const s: any = { fill: el.fillColor + "33", stroke: el.strokeColor, strokeWidth: el.strokeWidth };
+    const s: any = { fill: el.fillColor, stroke: el.strokeColor, strokeWidth: el.strokeWidth };
     if (el.strokeDash) s.strokeDasharray = el.strokeDash;
     if (el.strokeCap) s.strokeLinecap = el.strokeCap;
     if (el.strokeJoin) s.strokeLinejoin = el.strokeJoin;
@@ -1535,7 +1539,7 @@ const WorkspaceCanvas = () => {
                               }
                             }}>
                             {el.isGroup && <FolderPlus className="w-3 h-3 text-primary shrink-0" />}
-                            <div className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: el.fillColor + "66", border: `1px solid ${el.fillColor}` }} />
+                            <div className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: el.fillColor, border: `1px solid ${el.strokeColor || el.fillColor}` }} />
                             <span className="truncate flex-1">{el.label}</span>
                             {el.isGroup && <span className="text-[8px] text-primary/60">group</span>}
                             {prototypeLinks.some(l => l.fromId === el.id) && <Link className="w-3 h-3 text-yellow-400 shrink-0" />}
@@ -1639,7 +1643,7 @@ const WorkspaceCanvas = () => {
                             className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors mb-0.5 ${
                               selectedId === el.id ? "bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-secondary/60"
                             }`}>
-                            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: el.fillColor + "66" }} />
+                            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: el.fillColor }} />
                             <span className="truncate flex-1 text-left">{el.label}</span>
                             <span className="text-[9px] text-muted-foreground/60">{el.type}</span>
                           </button>
@@ -1802,15 +1806,7 @@ const WorkspaceCanvas = () => {
                   }}
                   onDoubleClick={e => { e.stopPropagation(); if (el.type === "Text") setEditingTextId(el.id); }}
                 >
-                  {el.htmlContent ? (
-                    <iframe
-                      title={el.label}
-                      srcDoc={el.htmlContent}
-                      sandbox="allow-scripts allow-forms allow-modals"
-                      loading="lazy"
-                      className="block h-full w-full rounded-[inherit] border-0 bg-white pointer-events-none"
-                    />
-                  ) : el.type === "Image" && el.imageUrl ? (
+                  {el.type === "Image" && el.imageUrl ? (
                     <img src={el.imageUrl} alt={el.label}
                       className="w-full h-full rounded select-none pointer-events-none"
                       draggable={false}
