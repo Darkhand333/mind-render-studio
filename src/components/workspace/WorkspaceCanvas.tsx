@@ -414,7 +414,7 @@ const WorkspaceCanvas = () => {
       }
 
       if (e.key === "Delete" || e.key === "Backspace") {
-        if (selectedId) {
+        if (selectedElementIds.length > 0) {
           handleDelete();
           e.preventDefault();
         }
@@ -924,7 +924,7 @@ const WorkspaceCanvas = () => {
     const nextProject = {
       elements: [newFrame],
       pages: [{ id: 1, name: "Page 1", active: true }],
-      canvasSettings: { zoom: 100, panOffset: { x: 0, y: 0 }, showGrid: true, gridSize: 40, gridStyle: "lines" },
+      canvasSettings: { zoom: 100, panOffset: { x: 0, y: 0 }, showGrid: true, gridSize: 40, gridStyle: "lines", snapToGrid: false, showSmartGuides: true },
       name,
     };
     applyWorkspaceData(nextProject);
