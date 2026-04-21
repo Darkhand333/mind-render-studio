@@ -232,11 +232,11 @@ const WorkspaceCanvas = () => {
     const backup = {
       elements,
       pages,
-      canvasSettings: { zoom, panOffset, showGrid, gridSize, gridStyle },
+      canvasSettings: { zoom, panOffset, showGrid, gridSize, gridStyle, snapToGrid, showSmartGuides },
       name: projectName,
     };
     persistWorkspaceBackup(backup);
-  }, [elements, gridSize, gridStyle, pages, panOffset, persistWorkspaceBackup, projectName, showGrid, zoom]);
+  }, [elements, gridSize, gridStyle, pages, panOffset, persistWorkspaceBackup, projectName, showGrid, showSmartGuides, snapToGrid, zoom]);
 
   useEffect(() => {
     if (elements.length > 0 || projectId) return;
@@ -341,13 +341,52 @@ const WorkspaceCanvas = () => {
     return () => window.removeEventListener("click", handler);
   }, [pageContextMenu]);
 
+  const selectedElementIds = multiSelect.length > 0 ? Array.from(new Set(multiSelect)) : selectedId ? [selectedId] : [];
+  const hasMultiSelection = selectedElementIds.length > 1;
   const activeElId = selectedId ?? lastSelectedId;
   const activeEl = activeElId ? elements.find(e => e.id === activeElId) || null : null;
 
+  const applySelection = useCallback((ids: number[]) => {
+    const uniqueIds = Array.from(new Set(ids));
+    setMultiSelect(uniqueIds.length > 1 ? uniqueIds : []);
+    setSelectedId(uniqueIds[0] ?? null);
+    setLastSelectedId(uniqueIds[0] ?? null);
+  }, []);
+
   const selectAllVisibleElements = useCallback(() => {
-    setMultiSelect(elements.filter((el) => el.visible).map((el) => el.id));
-    setSelectedId(null);
-  }, [elements]);
+    applySelection(elements.filter((el) => el.visible).map((el) => el.id));
+  }, [applySelection, elements]);
+
+  const fitCanvasToView = useCallback((ids: number[] = selectedElementIds) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const targetEls = (ids.length > 0 ? elements.filter((el) => ids.includes(el.id)) : elements.filter((el) => el.visible)).filter((el) => el.visible);
+    if (targetEls.length === 0) return;
+
+    const bounds = targetEls.reduce(
+      (acc, el) => ({
+        minX: Math.min(acc.minX, el.x),
+        minY: Math.min(acc.minY, el.y),
+        maxX: Math.max(acc.maxX, el.x + el.w),
+        maxY: Math.max(acc.maxY, el.y + el.h),
+      }),
+      { minX: Number.POSITIVE_INFINITY, minY: Number.POSITIVE_INFINITY, maxX: Number.NEGATIVE_INFINITY, maxY: Number.NEGATIVE_INFINITY }
+    );
+
+    const width = Math.max(bounds.maxX - bounds.minX, 1);
+    const height = Math.max(bounds.maxY - bounds.minY, 1);
+    const rect = canvas.getBoundingClientRect();
+    const padding = 72;
+    const nextZoom = Math.max(25, Math.min(400, Math.floor(Math.min((rect.width - padding * 2) / width, (rect.height - padding * 2) / height) * 100)));
+    const scale = nextZoom / 100;
+
+    setZoom(nextZoom);
+    setPanOffset({
+      x: (rect.width - width * scale) / 2 - bounds.minX * scale,
+      y: (rect.height - height * scale) / 2 - bounds.minY * scale,
+    });
+  }, [elements, selectedElementIds]);
 
   // Keyboard shortcuts
   useEffect(() => {
