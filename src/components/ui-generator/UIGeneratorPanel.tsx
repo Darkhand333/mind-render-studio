@@ -228,30 +228,45 @@ const UIGeneratorPanel = () => {
 
     recognitionRef.current = recognition;
 
-    try {
-      recognition.start();
-    } catch {
-      try { recognition.abort(); } catch {}
-      const fresh = buildRecognition();
-      if (fresh) {
+    const startRecognition = async () => {
+      const hasMicAccess = await requestMicrophoneAccess();
+      if (!hasMicAccess || stopRequestedRef.current) {
+        resetRecognitionState();
+        return;
+      }
+
+      try {
+        recognition.start();
+      } catch {
+        try { recognition.abort(); } catch {}
+        const fresh = buildRecognition();
+        if (!fresh) {
+          resetRecognitionState();
+          return;
+        }
+
         recognitionRef.current = fresh;
+
         try {
           fresh.start();
-        } catch {
-          toast({ title: "Voice input failed", description: "Please tap the microphone again", variant: "destructive" });
+        } catch (error) {
           stopRequestedRef.current = true;
+          handleMicrophoneError(error);
           resetRecognitionState();
         }
       }
-    }
-  }, [isListening, prompt, toast, stopListening, syncPromptWithTranscript, resetRecognitionState, buildRecognition]);
+    };
+
+    void startRecognition();
+  }, [buildRecognition, handleMicrophoneError, isListening, prompt, requestMicrophoneAccess, resetRecognitionState, stopListening, syncPromptWithTranscript, toast]);
 
   // Stop voice when unmount
   useEffect(() => {
     return () => {
+      clearRecognitionRestart();
       try { recognitionRef.current?.abort(); } catch {}
     };
-  }, []);
+  }, [clearRecognitionRestart]);
 
   const handleGenerate = useCallback(async () => {
     const text = prompt.trim();
@@ -368,7 +383,7 @@ ${generatedUI.js ? `<script>${generatedUI.js}<\/script>` : ""}
                 ? "gradient-purple neon-glow-sm text-primary-foreground animate-pulse"
                 : "bg-secondary/60 text-muted-foreground hover:text-foreground hover:bg-secondary"
             }`}
-            title={isListening ? "Stop listening" : "Start voice input (auto-stops after 2s silence)"}
+              title={isListening ? "Stop listening" : "Start voice input"}
           >
             {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
           </button>
