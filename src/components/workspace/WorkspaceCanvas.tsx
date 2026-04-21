@@ -55,7 +55,13 @@ const WorkspaceCanvas = () => {
   const [penPoints, setPenPoints] = useState<{ x: number; y: number }[]>([]);
   const [history, setHistory] = useState<CanvasElement[][]>([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
-  const [dragging, setDragging] = useState<{ id: number; offsetX: number; offsetY: number } | null>(null);
+  const [dragging, setDragging] = useState<{
+    leadId: number;
+    ids: number[];
+    offsetX: number;
+    offsetY: number;
+    originPositions: Record<number, { x: number; y: number }>;
+  } | null>(null);
   const [didDrag, setDidDrag] = useState(false);
   const [resizing, setResizing] = useState<{ id: number; handle: string; startX: number; startY: number; startW: number; startH: number; startElX: number; startElY: number } | null>(null);
   const [editingTextId, setEditingTextId] = useState<number | null>(null);
@@ -93,6 +99,8 @@ const WorkspaceCanvas = () => {
   const [draggingCP, setDraggingCP] = useState<{ pointIndex: number; cpType: "cp1" | "cp2" } | null>(null);
   // Multi-select for grouping
   const [multiSelect, setMultiSelect] = useState<number[]>([]);
+  const [snapToGrid, setSnapToGrid] = useState(false);
+  const [showSmartGuides, setShowSmartGuides] = useState(true);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -119,6 +127,8 @@ const WorkspaceCanvas = () => {
     setShowGrid(data.canvasSettings?.showGrid ?? true);
     setGridSize(data.canvasSettings?.gridSize ?? 40);
     setGridStyle(data.canvasSettings?.gridStyle ?? "lines");
+    setSnapToGrid(data.canvasSettings?.snapToGrid ?? false);
+    setShowSmartGuides(data.canvasSettings?.showSmartGuides ?? true);
     setProjectName(data.name || "Untitled");
   }, []);
 
@@ -130,7 +140,7 @@ const WorkspaceCanvas = () => {
   // Auto-save
   const { projectId, saving, lastSaved, saveNow, rename: renameProject, loadProject, createProject, listProjects } = useProjectAutoSave(
     projectName,
-    { elements, pages, canvasSettings: { zoom, panOffset, showGrid, gridSize, gridStyle } },
+    { elements, pages, canvasSettings: { zoom, panOffset, showGrid, gridSize, gridStyle, snapToGrid, showSmartGuides } },
     handleLoadProject
   );
 
