@@ -55,7 +55,13 @@ const WorkspaceCanvas = () => {
   const [penPoints, setPenPoints] = useState<{ x: number; y: number }[]>([]);
   const [history, setHistory] = useState<CanvasElement[][]>([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
-  const [dragging, setDragging] = useState<{ id: number; offsetX: number; offsetY: number } | null>(null);
+  const [dragging, setDragging] = useState<{
+    leadId: number;
+    ids: number[];
+    offsetX: number;
+    offsetY: number;
+    originPositions: Record<number, { x: number; y: number }>;
+  } | null>(null);
   const [didDrag, setDidDrag] = useState(false);
   const [resizing, setResizing] = useState<{ id: number; handle: string; startX: number; startY: number; startW: number; startH: number; startElX: number; startElY: number } | null>(null);
   const [editingTextId, setEditingTextId] = useState<number | null>(null);
@@ -93,6 +99,8 @@ const WorkspaceCanvas = () => {
   const [draggingCP, setDraggingCP] = useState<{ pointIndex: number; cpType: "cp1" | "cp2" } | null>(null);
   // Multi-select for grouping
   const [multiSelect, setMultiSelect] = useState<number[]>([]);
+  const [snapToGrid, setSnapToGrid] = useState(false);
+  const [showSmartGuides, setShowSmartGuides] = useState(true);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -119,6 +127,8 @@ const WorkspaceCanvas = () => {
     setShowGrid(data.canvasSettings?.showGrid ?? true);
     setGridSize(data.canvasSettings?.gridSize ?? 40);
     setGridStyle(data.canvasSettings?.gridStyle ?? "lines");
+    setSnapToGrid(data.canvasSettings?.snapToGrid ?? false);
+    setShowSmartGuides(data.canvasSettings?.showSmartGuides ?? true);
     setProjectName(data.name || "Untitled");
   }, []);
 
@@ -130,7 +140,7 @@ const WorkspaceCanvas = () => {
   // Auto-save
   const { projectId, saving, lastSaved, saveNow, rename: renameProject, loadProject, createProject, listProjects } = useProjectAutoSave(
     projectName,
-    { elements, pages, canvasSettings: { zoom, panOffset, showGrid, gridSize, gridStyle } },
+    { elements, pages, canvasSettings: { zoom, panOffset, showGrid, gridSize, gridStyle, snapToGrid, showSmartGuides } },
     handleLoadProject
   );
 
@@ -222,11 +232,11 @@ const WorkspaceCanvas = () => {
     const backup = {
       elements,
       pages,
-      canvasSettings: { zoom, panOffset, showGrid, gridSize, gridStyle },
+      canvasSettings: { zoom, panOffset, showGrid, gridSize, gridStyle, snapToGrid, showSmartGuides },
       name: projectName,
     };
     persistWorkspaceBackup(backup);
-  }, [elements, gridSize, gridStyle, pages, panOffset, persistWorkspaceBackup, projectName, showGrid, zoom]);
+  }, [elements, gridSize, gridStyle, pages, panOffset, persistWorkspaceBackup, projectName, showGrid, showSmartGuides, snapToGrid, zoom]);
 
   useEffect(() => {
     if (elements.length > 0 || projectId) return;
@@ -331,13 +341,52 @@ const WorkspaceCanvas = () => {
     return () => window.removeEventListener("click", handler);
   }, [pageContextMenu]);
 
+  const selectedElementIds = multiSelect.length > 0 ? Array.from(new Set(multiSelect)) : selectedId ? [selectedId] : [];
+  const hasMultiSelection = selectedElementIds.length > 1;
   const activeElId = selectedId ?? lastSelectedId;
   const activeEl = activeElId ? elements.find(e => e.id === activeElId) || null : null;
 
+  const applySelection = useCallback((ids: number[]) => {
+    const uniqueIds = Array.from(new Set(ids));
+    setMultiSelect(uniqueIds.length > 1 ? uniqueIds : []);
+    setSelectedId(uniqueIds[0] ?? null);
+    setLastSelectedId(uniqueIds[0] ?? null);
+  }, []);
+
   const selectAllVisibleElements = useCallback(() => {
-    setMultiSelect(elements.filter((el) => el.visible).map((el) => el.id));
-    setSelectedId(null);
-  }, [elements]);
+    applySelection(elements.filter((el) => el.visible).map((el) => el.id));
+  }, [applySelection, elements]);
+
+  const fitCanvasToView = useCallback((ids: number[] = selectedElementIds) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const targetEls = (ids.length > 0 ? elements.filter((el) => ids.includes(el.id)) : elements.filter((el) => el.visible)).filter((el) => el.visible);
+    if (targetEls.length === 0) return;
+
+    const bounds = targetEls.reduce(
+      (acc, el) => ({
+        minX: Math.min(acc.minX, el.x),
+        minY: Math.min(acc.minY, el.y),
+        maxX: Math.max(acc.maxX, el.x + el.w),
+        maxY: Math.max(acc.maxY, el.y + el.h),
+      }),
+      { minX: Number.POSITIVE_INFINITY, minY: Number.POSITIVE_INFINITY, maxX: Number.NEGATIVE_INFINITY, maxY: Number.NEGATIVE_INFINITY }
+    );
+
+    const width = Math.max(bounds.maxX - bounds.minX, 1);
+    const height = Math.max(bounds.maxY - bounds.minY, 1);
+    const rect = canvas.getBoundingClientRect();
+    const padding = 72;
+    const nextZoom = Math.max(25, Math.min(400, Math.floor(Math.min((rect.width - padding * 2) / width, (rect.height - padding * 2) / height) * 100)));
+    const scale = nextZoom / 100;
+
+    setZoom(nextZoom);
+    setPanOffset({
+      x: (rect.width - width * scale) / 2 - bounds.minX * scale,
+      y: (rect.height - height * scale) / 2 - bounds.minY * scale,
+    });
+  }, [elements, selectedElementIds]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -365,7 +414,7 @@ const WorkspaceCanvas = () => {
       }
 
       if (e.key === "Delete" || e.key === "Backspace") {
-        if (selectedId) {
+        if (selectedElementIds.length > 0) {
           handleDelete();
           e.preventDefault();
         }
@@ -404,15 +453,37 @@ const WorkspaceCanvas = () => {
 
   const handleUndo = () => { if (historyIdx >= 0) { setElements(JSON.parse(JSON.stringify(history[historyIdx]))); setHistoryIdx(i => i - 1); } };
   const handleRedo = () => { if (historyIdx < history.length - 1) { setElements(JSON.parse(JSON.stringify(history[historyIdx + 1]))); setHistoryIdx(i => i + 1); } };
-  const handleDelete = () => { if (!selectedId) return; pushHistory(); setElements(p => p.filter(el => el.id !== selectedId)); setSelectedId(null); setLastSelectedId(null); };
-  const handleDuplicate = () => {
-    if (!selectedId) return;
-    const el = elements.find(e => e.id === selectedId);
-    if (!el) return;
+  const handleDelete = () => {
+    if (selectedElementIds.length === 0) return;
     pushHistory();
-    const newEl = { ...el, id: nextId++, x: el.x + 20, y: el.y + 20, label: `${el.label} copy` };
-    setElements(prev => [...prev, newEl]);
-    setSelectedId(newEl.id);
+    setElements((prev) => prev.filter((el) => !selectedElementIds.includes(el.id)));
+    applySelection([]);
+  };
+  const handleDuplicate = () => {
+    if (selectedElementIds.length === 0) return;
+    const orderedSelection = elements.filter((el) => selectedElementIds.includes(el.id));
+    if (orderedSelection.length === 0) return;
+    pushHistory();
+    const duplicates = orderedSelection.map((el) => ({
+      ...el,
+      id: nextId++,
+      x: el.x + 24,
+      y: el.y + 24,
+      label: `${el.label} copy`,
+      children: el.children ? [...el.children] : undefined,
+    }));
+    setElements((prev) => [...prev, ...duplicates]);
+    applySelection(duplicates.map((el) => el.id));
+  };
+
+  const handleLayerOrder = (direction: "front" | "back") => {
+    if (selectedElementIds.length === 0) return;
+    pushHistory();
+    setElements((prev) => {
+      const selected = prev.filter((el) => selectedElementIds.includes(el.id));
+      const others = prev.filter((el) => !selectedElementIds.includes(el.id));
+      return direction === "front" ? [...others, ...selected] : [...selected, ...others];
+    });
   };
 
   // Group selected elements
@@ -659,10 +730,10 @@ const WorkspaceCanvas = () => {
   };
 
   // Snap logic
-  const calculateSnaps = (movingId: number, x: number, y: number, w: number, h: number): { snappedX: number; snappedY: number; guides: SnapGuide[] } => {
+  const calculateSnaps = (movingIds: number[], x: number, y: number, w: number, h: number): { snappedX: number; snappedY: number; guides: SnapGuide[] } => {
     const guides: SnapGuide[] = [];
     let snappedX = x, snappedY = y;
-    const otherEls = elements.filter(el => el.id !== movingId && el.visible);
+    const otherEls = elements.filter(el => !movingIds.includes(el.id) && el.visible);
     const movingEdges = { left: x, right: x + w, centerX: x + w / 2, top: y, bottom: y + h, centerY: y + h / 2 };
 
     for (const el of otherEls) {
@@ -748,13 +819,30 @@ const WorkspaceCanvas = () => {
     if (dragging) {
       setDidDrag(true);
       const pos = getCanvasPos(e);
-      const el = elements.find(el => el.id === dragging.id);
-      if (el) {
-        const rawX = pos.x - dragging.offsetX;
-        const rawY = pos.y - dragging.offsetY;
-        const { snappedX, snappedY, guides } = calculateSnaps(dragging.id, rawX, rawY, el.w, el.h);
-        setActiveSnapGuides(guides);
-        setElements(prev => prev.map(el => el.id === dragging.id ? { ...el, x: snappedX, y: snappedY } : el));
+      const leadEl = elements.find((el) => el.id === dragging.leadId);
+      const leadOrigin = dragging.originPositions[dragging.leadId];
+      if (leadEl && leadOrigin) {
+        let rawX = pos.x - dragging.offsetX;
+        let rawY = pos.y - dragging.offsetY;
+
+        if (snapToGrid) {
+          rawX = Math.round(rawX / gridSize) * gridSize;
+          rawY = Math.round(rawY / gridSize) * gridSize;
+        }
+
+        const { snappedX, snappedY, guides } = showSmartGuides
+          ? calculateSnaps(dragging.ids, rawX, rawY, leadEl.w, leadEl.h)
+          : { snappedX: rawX, snappedY: rawY, guides: [] as SnapGuide[] };
+        const deltaX = snappedX - leadOrigin.x;
+        const deltaY = snappedY - leadOrigin.y;
+
+        setActiveSnapGuides(showSmartGuides ? guides : []);
+        setElements((prev) => prev.map((el) => {
+          if (!dragging.ids.includes(el.id)) return el;
+          const origin = dragging.originPositions[el.id];
+          if (!origin) return el;
+          return { ...el, x: origin.x + deltaX, y: origin.y + deltaY };
+        }));
       }
     }
     if (resizing) {
@@ -836,7 +924,7 @@ const WorkspaceCanvas = () => {
     const nextProject = {
       elements: [newFrame],
       pages: [{ id: 1, name: "Page 1", active: true }],
-      canvasSettings: { zoom: 100, panOffset: { x: 0, y: 0 }, showGrid: true, gridSize: 40, gridStyle: "lines" },
+      canvasSettings: { zoom: 100, panOffset: { x: 0, y: 0 }, showGrid: true, gridSize: 40, gridStyle: "lines", snapToGrid: false, showSmartGuides: true },
       name,
     };
     applyWorkspaceData(nextProject);
@@ -1778,7 +1866,6 @@ const WorkspaceCanvas = () => {
                   }}
                   onClick={e => {
                     e.stopPropagation();
-                    // In prototype mode, handle linking
                     if (prototypeMode) {
                       if (linkingFrom === null) {
                         setLinkingFrom(el.id);
@@ -1789,17 +1876,36 @@ const WorkspaceCanvas = () => {
                       }
                       return;
                     }
-                    // FIX: Don't toggle off if we just dragged
                     if (didDrag) return;
-                    setSelectedId(el.id);
+                    if (e.shiftKey) {
+                      applySelection(
+                        selectedElementIds.includes(el.id)
+                          ? selectedElementIds.filter((id) => id !== el.id)
+                          : [...selectedElementIds, el.id]
+                      );
+                      return;
+                    }
+                    applySelection([el.id]);
                   }}
                   onMouseDown={e => {
                     if (el.locked || prototypeMode) return;
                     e.stopPropagation();
+                    if (e.shiftKey) return;
+                    const currentSelection = selectedElementIds.includes(el.id) ? selectedElementIds : [el.id];
                     const pos = getCanvasPos(e);
-                    setDragging({ id: el.id, offsetX: pos.x - el.x, offsetY: pos.y - el.y });
+                    setDragging({
+                      leadId: el.id,
+                      ids: currentSelection,
+                      offsetX: pos.x - el.x,
+                      offsetY: pos.y - el.y,
+                      originPositions: Object.fromEntries(
+                        elements
+                          .filter((item) => currentSelection.includes(item.id))
+                          .map((item) => [item.id, { x: item.x, y: item.y }])
+                      ),
+                    });
                     setDidDrag(false);
-                    setSelectedId(el.id);
+                    applySelection(currentSelection);
                   }}
                   onDoubleClick={e => { e.stopPropagation(); if (el.type === "Text") setEditingTextId(el.id); }}
                 >
@@ -1836,31 +1942,32 @@ const WorkspaceCanvas = () => {
                     </svg>
                   )}
                   {/* Selection border + resize handles + rotation handle */}
-                  {selectedId === el.id && !el.locked && !["Line", "Arrow", "Pen", "Pencil", "Brush"].includes(el.type) && (
+                  {selectedElementIds.includes(el.id) && !el.locked && !["Line", "Arrow", "Pen", "Pencil", "Brush"].includes(el.type) && (
                     <>
                       <div className="absolute inset-0 border-2 border-primary pointer-events-none" />
-                      {resizeHandles.map(h => (
+                      {!hasMultiSelection && selectedId === el.id && resizeHandles.map(h => (
                         <div key={h} style={getHandleStyle(h)}
                           onMouseDown={e => { e.stopPropagation(); const pos = getCanvasPos(e); pushHistory(); setResizing({ id: el.id, handle: h, startX: pos.x, startY: pos.y, startW: el.w, startH: el.h, startElX: el.x, startElY: el.y }); }} />
                       ))}
-                      {/* Rotation handle - appears above the element */}
-                      <div
-                        className="absolute left-1/2 -translate-x-1/2 cursor-grab active:cursor-grabbing group"
-                        style={{ top: -30 }}
-                        onMouseDown={(e) => handleRotationMouseDown(e, el.id)}
-                        title={`Rotation: ${el.rotation}° (hold Shift for 15° steps)`}
-                      >
-                        <div className="w-4 h-4 rounded-full bg-primary border-2 border-primary-foreground flex items-center justify-center hover:scale-125 transition-transform">
-                          <RotateCw className="w-2.5 h-2.5 text-primary-foreground" />
+                      {!hasMultiSelection && selectedId === el.id && (
+                        <div
+                          className="absolute left-1/2 -translate-x-1/2 cursor-grab active:cursor-grabbing group"
+                          style={{ top: -30 }}
+                          onMouseDown={(e) => handleRotationMouseDown(e, el.id)}
+                          title={`Rotation: ${el.rotation}° (hold Shift for 15° steps)`}
+                        >
+                          <div className="w-4 h-4 rounded-full bg-primary border-2 border-primary-foreground flex items-center justify-center hover:scale-125 transition-transform">
+                            <RotateCw className="w-2.5 h-2.5 text-primary-foreground" />
+                          </div>
+                          <div className="w-px h-3 bg-primary mx-auto" />
                         </div>
-                        <div className="w-px h-3 bg-primary mx-auto" />
-                      </div>
+                      )}
                     </>
                   )}
                   {focusedElementId === el.id && (
                     <div className="absolute -inset-3 rounded-[20px] border-2 border-primary/70 pointer-events-none animate-pulse" />
                   )}
-                  {selectedId === el.id && (
+                  {selectedElementIds.includes(el.id) && (
                     <div className="absolute -bottom-5 left-0 text-[9px] text-primary font-medium whitespace-nowrap">
                       {Math.round(el.w)} × {Math.round(el.h)} {el.rotation !== 0 && <span className="ml-1 text-accent">↻ {el.rotation}°</span>}
                     </div>
