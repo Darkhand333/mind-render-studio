@@ -38,6 +38,7 @@ const UIGeneratorPanel = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const listeningRef = useRef(false);
   const stopRequestedRef = useRef(false);
+  const restartTimeoutRef = useRef<number | null>(null);
   const promptBeforeListeningRef = useRef("");
   const finalTranscriptRef = useRef("");
   const { toast } = useToast();
@@ -54,22 +55,75 @@ const UIGeneratorPanel = () => {
     setInterimText(interim);
   }, []);
 
-  // Stop recognition gracefully
+  const clearRecognitionRestart = useCallback(() => {
+    if (restartTimeoutRef.current !== null) {
+      window.clearTimeout(restartTimeoutRef.current);
+      restartTimeoutRef.current = null;
+    }
+  }, []);
+
   const resetRecognitionState = useCallback(() => {
+    clearRecognitionRestart();
     recognitionRef.current = null;
     listeningRef.current = false;
     setIsListening(false);
     setInterimText("");
-  }, []);
+  }, [clearRecognitionRestart]);
+
+  const handleMicrophoneError = useCallback((error: any) => {
+    const code = error?.error || error?.name;
+
+    if (code === "NotAllowedError" || code === "PermissionDeniedError" || code === "not-allowed" || code === "service-not-allowed") {
+      toast({ title: "Microphone blocked", description: "Allow microphone access in your browser settings", variant: "destructive" });
+      return;
+    }
+
+    if (code === "NotFoundError" || code === "DevicesNotFoundError" || code === "audio-capture") {
+      toast({ title: "Microphone unavailable", description: "Connect a microphone and try again", variant: "destructive" });
+      return;
+    }
+
+    if (code === "NotReadableError" || code === "TrackStartError") {
+      toast({ title: "Microphone busy", description: "Close any app using the microphone, then try again", variant: "destructive" });
+      return;
+    }
+
+    if (code === "network") {
+      toast({ title: "Speech service interrupted", description: "Trying to reconnect to voice input", variant: "destructive" });
+      return;
+    }
+
+    toast({ title: "Voice input failed", description: "Please try the microphone again", variant: "destructive" });
+  }, [toast]);
+
+  const requestMicrophoneAccess = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia) return true;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+      return true;
+    } catch (error) {
+      handleMicrophoneError(error);
+      return false;
+    }
+  }, [handleMicrophoneError]);
 
   const stopListening = useCallback(() => {
     stopRequestedRef.current = true;
+    clearRecognitionRestart();
+
     if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch {}
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        try { recognitionRef.current.abort(); } catch {}
+        resetRecognitionState();
+      }
     } else {
       resetRecognitionState();
     }
-  }, [resetRecognitionState]);
+  }, [clearRecognitionRestart, resetRecognitionState]);
 
   const buildRecognition = useCallback(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -105,19 +159,13 @@ const UIGeneratorPanel = () => {
     };
 
     recognition.onerror = (e: any) => {
-      // Ignore non-fatal errors — keep the session alive
       if (e.error === "no-speech" || e.error === "aborted") return;
 
-      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-        toast({ title: "Microphone blocked", description: "Allow microphone access in your browser settings", variant: "destructive" });
+      if (e.error === "not-allowed" || e.error === "service-not-allowed" || e.error === "audio-capture") {
         stopRequestedRef.current = true;
-        resetRecognitionState();
-      } else if (e.error === "audio-capture") {
-        toast({ title: "Microphone unavailable", description: "Check your microphone and try again", variant: "destructive" });
-        stopRequestedRef.current = true;
+        handleMicrophoneError(e);
         resetRecognitionState();
       }
-      // For "network" and other transient errors, let onend auto-restart silently
     };
 
     recognition.onend = () => {
@@ -125,23 +173,32 @@ const UIGeneratorPanel = () => {
         resetRecognitionState();
         return;
       }
-      // Auto-restart to keep listening continuously
-      window.setTimeout(() => {
+
+      clearRecognitionRestart();
+      restartTimeoutRef.current = window.setTimeout(() => {
         if (stopRequestedRef.current) return;
-        try {
-          recognition.start();
-        } catch {
-          const fresh = buildRecognition();
-          if (fresh) {
-            recognitionRef.current = fresh;
-            try { fresh.start(); } catch {}
-          }
+
+        const nextRecognition = recognitionRef.current ?? buildRecognition();
+        if (!nextRecognition) {
+          resetRecognitionState();
+          return;
         }
-      }, 150);
+
+        recognitionRef.current = nextRecognition;
+
+        try {
+          nextRecognition.start();
+        } catch (error: any) {
+          if (error?.name === "InvalidStateError") return;
+          stopRequestedRef.current = true;
+          handleMicrophoneError(error);
+          resetRecognitionState();
+        }
+      }, 180);
     };
 
     return recognition;
-  }, [toast, syncPromptWithTranscript, resetRecognitionState]);
+  }, [clearRecognitionRestart, handleMicrophoneError, resetRecognitionState, syncPromptWithTranscript]);
 
   const toggleVoice = useCallback(() => {
     if (isListening) {
