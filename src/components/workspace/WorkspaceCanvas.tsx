@@ -453,15 +453,37 @@ const WorkspaceCanvas = () => {
 
   const handleUndo = () => { if (historyIdx >= 0) { setElements(JSON.parse(JSON.stringify(history[historyIdx]))); setHistoryIdx(i => i - 1); } };
   const handleRedo = () => { if (historyIdx < history.length - 1) { setElements(JSON.parse(JSON.stringify(history[historyIdx + 1]))); setHistoryIdx(i => i + 1); } };
-  const handleDelete = () => { if (!selectedId) return; pushHistory(); setElements(p => p.filter(el => el.id !== selectedId)); setSelectedId(null); setLastSelectedId(null); };
-  const handleDuplicate = () => {
-    if (!selectedId) return;
-    const el = elements.find(e => e.id === selectedId);
-    if (!el) return;
+  const handleDelete = () => {
+    if (selectedElementIds.length === 0) return;
     pushHistory();
-    const newEl = { ...el, id: nextId++, x: el.x + 20, y: el.y + 20, label: `${el.label} copy` };
-    setElements(prev => [...prev, newEl]);
-    setSelectedId(newEl.id);
+    setElements((prev) => prev.filter((el) => !selectedElementIds.includes(el.id)));
+    applySelection([]);
+  };
+  const handleDuplicate = () => {
+    if (selectedElementIds.length === 0) return;
+    const orderedSelection = elements.filter((el) => selectedElementIds.includes(el.id));
+    if (orderedSelection.length === 0) return;
+    pushHistory();
+    const duplicates = orderedSelection.map((el) => ({
+      ...el,
+      id: nextId++,
+      x: el.x + 24,
+      y: el.y + 24,
+      label: `${el.label} copy`,
+      children: el.children ? [...el.children] : undefined,
+    }));
+    setElements((prev) => [...prev, ...duplicates]);
+    applySelection(duplicates.map((el) => el.id));
+  };
+
+  const handleLayerOrder = (direction: "front" | "back") => {
+    if (selectedElementIds.length === 0) return;
+    pushHistory();
+    setElements((prev) => {
+      const selected = prev.filter((el) => selectedElementIds.includes(el.id));
+      const others = prev.filter((el) => !selectedElementIds.includes(el.id));
+      return direction === "front" ? [...others, ...selected] : [...selected, ...others];
+    });
   };
 
   // Group selected elements
@@ -708,10 +730,10 @@ const WorkspaceCanvas = () => {
   };
 
   // Snap logic
-  const calculateSnaps = (movingId: number, x: number, y: number, w: number, h: number): { snappedX: number; snappedY: number; guides: SnapGuide[] } => {
+  const calculateSnaps = (movingIds: number[], x: number, y: number, w: number, h: number): { snappedX: number; snappedY: number; guides: SnapGuide[] } => {
     const guides: SnapGuide[] = [];
     let snappedX = x, snappedY = y;
-    const otherEls = elements.filter(el => el.id !== movingId && el.visible);
+    const otherEls = elements.filter(el => !movingIds.includes(el.id) && el.visible);
     const movingEdges = { left: x, right: x + w, centerX: x + w / 2, top: y, bottom: y + h, centerY: y + h / 2 };
 
     for (const el of otherEls) {
@@ -797,13 +819,30 @@ const WorkspaceCanvas = () => {
     if (dragging) {
       setDidDrag(true);
       const pos = getCanvasPos(e);
-      const el = elements.find(el => el.id === dragging.id);
-      if (el) {
-        const rawX = pos.x - dragging.offsetX;
-        const rawY = pos.y - dragging.offsetY;
-        const { snappedX, snappedY, guides } = calculateSnaps(dragging.id, rawX, rawY, el.w, el.h);
-        setActiveSnapGuides(guides);
-        setElements(prev => prev.map(el => el.id === dragging.id ? { ...el, x: snappedX, y: snappedY } : el));
+      const leadEl = elements.find((el) => el.id === dragging.leadId);
+      const leadOrigin = dragging.originPositions[dragging.leadId];
+      if (leadEl && leadOrigin) {
+        let rawX = pos.x - dragging.offsetX;
+        let rawY = pos.y - dragging.offsetY;
+
+        if (snapToGrid) {
+          rawX = Math.round(rawX / gridSize) * gridSize;
+          rawY = Math.round(rawY / gridSize) * gridSize;
+        }
+
+        const { snappedX, snappedY, guides } = showSmartGuides
+          ? calculateSnaps(dragging.ids, rawX, rawY, leadEl.w, leadEl.h)
+          : { snappedX: rawX, snappedY: rawY, guides: [] as SnapGuide[] };
+        const deltaX = snappedX - leadOrigin.x;
+        const deltaY = snappedY - leadOrigin.y;
+
+        setActiveSnapGuides(showSmartGuides ? guides : []);
+        setElements((prev) => prev.map((el) => {
+          if (!dragging.ids.includes(el.id)) return el;
+          const origin = dragging.originPositions[el.id];
+          if (!origin) return el;
+          return { ...el, x: origin.x + deltaX, y: origin.y + deltaY };
+        }));
       }
     }
     if (resizing) {
