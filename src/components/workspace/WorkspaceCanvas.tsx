@@ -1237,7 +1237,9 @@ const WorkspaceCanvas = () => {
   };
 
   const renderShape = (el: CanvasElement) => {
-    const s: any = { fill: el.fillColor, stroke: el.strokeColor, strokeWidth: el.strokeWidth };
+    const safeFill = typeof el.fillColor === "string" && el.fillColor.includes("gradient(") ? "transparent" : el.fillColor;
+    const safeStroke = typeof el.strokeColor === "string" && el.strokeColor.includes("gradient(") ? "transparent" : el.strokeColor;
+    const s: any = { fill: safeFill, stroke: safeStroke, strokeWidth: el.strokeWidth };
     if (el.strokeDash) s.strokeDasharray = el.strokeDash;
     if (el.strokeCap) s.strokeLinecap = el.strokeCap;
     if (el.strokeJoin) s.strokeLinejoin = el.strokeJoin;
@@ -1860,7 +1862,7 @@ const WorkspaceCanvas = () => {
                     height: ["Line", "Arrow", "Pen", "Pencil", "Brush"].includes(el.type) ? undefined : el.h,
                     transform: `rotate(${el.rotation}deg) scaleX(${el.flipH ? -1 : 1}) scaleY(${el.flipV ? -1 : 1})`,
                     transformOrigin: "center center",
-                    opacity: el.opacity / 100,
+                    opacity: el.generatedEditable && !selectedElementIds.includes(el.id) ? 0.01 : el.opacity / 100,
                     mixBlendMode: (el.blendMode?.toLowerCase().replace(" ", "-") || "normal") as any,
                     filter: el.blurAmount ? `blur(${el.blurAmount}px)` : undefined,
                   }}
