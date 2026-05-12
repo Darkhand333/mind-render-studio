@@ -1855,7 +1855,7 @@ const WorkspaceCanvas = () => {
                 <div
                   key={el.id}
                   data-element-id={el.id}
-                  className={`absolute ${el.locked ? "pointer-events-none opacity-60" : "cursor-move"}`}
+                  className={`absolute ${el.locked ? "pointer-events-none" : "cursor-move"}`}
                   style={{
                     left: el.x, top: el.y,
                     width: ["Line", "Arrow", "Pen", "Pencil", "Brush"].includes(el.type) ? undefined : el.w,
