@@ -191,6 +191,7 @@ const createEditableElementsFromLayout = async (generatedUI: GeneratedUI, prompt
   host.style.left = "-20000px";
   host.style.top = "0";
   host.style.width = `${HIDDEN_RENDER_WIDTH}px`;
+  host.style.minHeight = `${HIDDEN_RENDER_HEIGHT}px`;
   host.style.pointerEvents = "none";
   host.style.visibility = "hidden";
   host.style.zIndex = "-1";
@@ -198,8 +199,8 @@ const createEditableElementsFromLayout = async (generatedUI: GeneratedUI, prompt
   host.innerHTML = `
     <style>
       *, *::before, *::after { box-sizing: border-box; }
-      html, body { margin: 0; padding: 0; }
-      img { display: block; max-width: 100%; }
+      html, body { margin: 0; padding: 0; min-width: ${HIDDEN_RENDER_WIDTH}px; }
+      img, svg { display: block; max-width: 100%; }
       button, input, textarea, select { font: inherit; }
       ${generatedUI.css}
     </style>
@@ -224,22 +225,26 @@ const createEditableElementsFromLayout = async (generatedUI: GeneratedUI, prompt
     await waitForImages(root);
     await waitForLayout();
 
+    const documentElement = root.firstElementChild instanceof HTMLElement ? root.firstElementChild : root;
     const rootRect = root.getBoundingClientRect();
-    const rootWidth = clamp(Math.ceil(Math.max(root.scrollWidth, rootRect.width, 360)), 360, 2200);
-    const rootHeight = clamp(Math.ceil(Math.max(root.scrollHeight, rootRect.height, 480)), 480, 4000);
+    const documentRect = documentElement.getBoundingClientRect();
+    const rootWidth = clamp(Math.ceil(Math.max(root.scrollWidth, documentElement.scrollWidth, rootRect.width, documentRect.width, HIDDEN_RENDER_WIDTH)), 360, 2200);
+    const rootHeight = clamp(Math.ceil(Math.max(root.scrollHeight, documentElement.scrollHeight, rootRect.height, documentRect.height, HIDDEN_RENDER_HEIGHT)), 480, 4000);
     const elements: CanvasElement[] = [];
     let nextId = 1;
 
-    const rootStyle = window.getComputedStyle(root);
-    if (hasVisibleBox(rootStyle)) {
-      elements.push({
-        ...createBaseElement(nextId++, "Frame", IMPORT_OFFSET_X, IMPORT_OFFSET_Y, rootWidth, rootHeight, prompt || "Generated UI"),
-        fillColor: isTransparent(rootStyle.backgroundColor) ? FRAME_FILL : rootStyle.backgroundColor,
-        strokeColor: hasVisibleBorder(rootStyle) ? rootStyle.borderTopColor : FRAME_STROKE,
-        strokeWidth: hasVisibleBorder(rootStyle) ? Number.parseFloat(rootStyle.borderTopWidth || "1") : 1,
-        cornerRadius: getRadius(rootStyle),
-      });
-    }
+    const rootStyle = window.getComputedStyle(documentElement);
+    const previewFrameId = nextId++;
+    elements.push({
+      ...createBaseElement(previewFrameId, "Frame", IMPORT_OFFSET_X, IMPORT_OFFSET_Y, rootWidth, rootHeight, `${prompt || "Generated UI"} exact preview`),
+      fillColor: isTransparent(rootStyle.backgroundColor) ? FRAME_FILL : rootStyle.backgroundColor,
+      strokeColor: FRAME_STROKE,
+      strokeWidth: 1,
+      cornerRadius: getRadius(rootStyle),
+      locked: true,
+      opacity: 32,
+      htmlContent: createGeneratedDocument(generatedUI),
+    });
 
     const nodes = Array.from(root.querySelectorAll("*")) as HTMLElement[];
 
