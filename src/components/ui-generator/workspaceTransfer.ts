@@ -22,6 +22,7 @@ const FRAME_STROKE = "hsl(220, 12%, 82%)";
 const IMPORT_OFFSET_X = 60;
 const IMPORT_OFFSET_Y = 60;
 const HIDDEN_RENDER_WIDTH = 1440;
+const HIDDEN_RENDER_HEIGHT = 960;
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 const round = (value: number) => Math.round(value * 100) / 100;
@@ -110,9 +111,19 @@ const buildFallbackElements = (prompt: string): CanvasElement[] => [
 ];
 
 const getTextValue = (node: HTMLElement) => {
-  if (node instanceof HTMLInputElement) return node.value || node.placeholder || node.getAttribute("aria-label") || "Input";
-  if (node instanceof HTMLTextAreaElement) return node.value || node.placeholder || node.getAttribute("aria-label") || "Textarea";
-  if (node instanceof HTMLSelectElement) return node.selectedOptions[0]?.textContent?.trim() || node.getAttribute("aria-label") || "Select";
+  const tag = node.tagName.toLowerCase();
+  if (tag === "input") {
+    const input = node as HTMLInputElement;
+    return input.value || input.placeholder || input.getAttribute("aria-label") || "Input";
+  }
+  if (tag === "textarea") {
+    const textarea = node as HTMLTextAreaElement;
+    return textarea.value || textarea.placeholder || textarea.getAttribute("aria-label") || "Textarea";
+  }
+  if (tag === "select") {
+    const select = node as HTMLSelectElement;
+    return select.selectedOptions[0]?.textContent?.trim() || select.getAttribute("aria-label") || "Select";
+  }
   return node.textContent?.replace(/\s+/g, " ").trim() || "";
 };
 
@@ -140,6 +151,30 @@ const shouldAddTextLayer = (node: HTMLElement) => {
   if (node.querySelector("img, svg, input, textarea, select")) return false;
   return !!getTextValue(node);
 };
+
+const getBackgroundCss = (style: CSSStyleDeclaration, fallback = "transparent") => {
+  const image = style.backgroundImage?.trim();
+  if (image && image !== "none") return image;
+  return isTransparent(style.backgroundColor) ? fallback : style.backgroundColor;
+};
+
+const createGeneratedDocument = (generatedUI: GeneratedUI) => `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; min-width: ${HIDDEN_RENDER_WIDTH}px; }
+    img, svg { display: block; max-width: 100%; }
+    button, input, textarea, select { font: inherit; }
+    ${generatedUI.css}
+  </style>
+</head>
+<body>
+  ${generatedUI.html}
+</body>
+</html>`;
 
 const createEditableElementsFromLayout = async (generatedUI: GeneratedUI, prompt: string) => {
   if (typeof window === "undefined" || typeof document === "undefined") {
