@@ -51,6 +51,8 @@ export type CanvasElement = {
   imageGrayscale?: number;
   imageHueRotate?: number;
   htmlContent?: string;
+  generatedPreview?: boolean;
+  generatedEditable?: boolean;
   // Grouping
   groupId?: number;
   isGroup?: boolean;
