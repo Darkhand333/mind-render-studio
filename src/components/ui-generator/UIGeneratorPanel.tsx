@@ -96,19 +96,6 @@ const UIGeneratorPanel = () => {
     toast({ title: "Voice input failed", description: "Please try the microphone again", variant: "destructive" });
   }, [toast]);
 
-  const requestMicrophoneAccess = useCallback(async () => {
-    if (!navigator.mediaDevices?.getUserMedia) return true;
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((track) => track.stop());
-      return true;
-    } catch (error) {
-      handleMicrophoneError(error);
-      return false;
-    }
-  }, [handleMicrophoneError]);
-
   const stopListening = useCallback(() => {
     stopRequestedRef.current = true;
     clearRecognitionRestart();
@@ -161,11 +148,14 @@ const UIGeneratorPanel = () => {
     recognition.onerror = (e: any) => {
       if (e.error === "no-speech" || e.error === "aborted") return;
 
-      if (e.error === "not-allowed" || e.error === "service-not-allowed" || e.error === "audio-capture") {
-        stopRequestedRef.current = true;
+      if (e.error === "network") {
         handleMicrophoneError(e);
-        resetRecognitionState();
+        return;
       }
+
+      stopRequestedRef.current = true;
+      handleMicrophoneError(e);
+      resetRecognitionState();
     };
 
     recognition.onend = () => {
@@ -228,37 +218,31 @@ const UIGeneratorPanel = () => {
 
     recognitionRef.current = recognition;
 
-    const startRecognition = async () => {
-      const hasMicAccess = await requestMicrophoneAccess();
-      if (!hasMicAccess || stopRequestedRef.current) {
+    listeningRef.current = true;
+    setIsListening(true);
+    textareaRef.current?.focus();
+
+    try {
+      recognition.start();
+    } catch {
+      try { recognition.abort(); } catch {}
+      const fresh = buildRecognition();
+      if (!fresh) {
         resetRecognitionState();
         return;
       }
 
+      recognitionRef.current = fresh;
+
       try {
-        recognition.start();
-      } catch {
-        try { recognition.abort(); } catch {}
-        const fresh = buildRecognition();
-        if (!fresh) {
-          resetRecognitionState();
-          return;
-        }
-
-        recognitionRef.current = fresh;
-
-        try {
-          fresh.start();
-        } catch (error) {
-          stopRequestedRef.current = true;
-          handleMicrophoneError(error);
-          resetRecognitionState();
-        }
+        fresh.start();
+      } catch (error) {
+        stopRequestedRef.current = true;
+        handleMicrophoneError(error);
+        resetRecognitionState();
       }
-    };
-
-    void startRecognition();
-  }, [buildRecognition, handleMicrophoneError, isListening, prompt, requestMicrophoneAccess, resetRecognitionState, stopListening, syncPromptWithTranscript, toast]);
+    }
+  }, [buildRecognition, handleMicrophoneError, isListening, prompt, resetRecognitionState, stopListening, syncPromptWithTranscript, toast]);
 
   // Stop voice when unmount
   useEffect(() => {

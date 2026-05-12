@@ -22,6 +22,7 @@ const FRAME_STROKE = "hsl(220, 12%, 82%)";
 const IMPORT_OFFSET_X = 60;
 const IMPORT_OFFSET_Y = 60;
 const HIDDEN_RENDER_WIDTH = 1440;
+const HIDDEN_RENDER_HEIGHT = 960;
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 const round = (value: number) => Math.round(value * 100) / 100;
@@ -110,9 +111,19 @@ const buildFallbackElements = (prompt: string): CanvasElement[] => [
 ];
 
 const getTextValue = (node: HTMLElement) => {
-  if (node instanceof HTMLInputElement) return node.value || node.placeholder || node.getAttribute("aria-label") || "Input";
-  if (node instanceof HTMLTextAreaElement) return node.value || node.placeholder || node.getAttribute("aria-label") || "Textarea";
-  if (node instanceof HTMLSelectElement) return node.selectedOptions[0]?.textContent?.trim() || node.getAttribute("aria-label") || "Select";
+  const tag = node.tagName.toLowerCase();
+  if (tag === "input") {
+    const input = node as HTMLInputElement;
+    return input.value || input.placeholder || input.getAttribute("aria-label") || "Input";
+  }
+  if (tag === "textarea") {
+    const textarea = node as HTMLTextAreaElement;
+    return textarea.value || textarea.placeholder || textarea.getAttribute("aria-label") || "Textarea";
+  }
+  if (tag === "select") {
+    const select = node as HTMLSelectElement;
+    return select.selectedOptions[0]?.textContent?.trim() || select.getAttribute("aria-label") || "Select";
+  }
   return node.textContent?.replace(/\s+/g, " ").trim() || "";
 };
 
@@ -141,6 +152,30 @@ const shouldAddTextLayer = (node: HTMLElement) => {
   return !!getTextValue(node);
 };
 
+const getBackgroundCss = (style: CSSStyleDeclaration, fallback = "transparent") => {
+  const image = style.backgroundImage?.trim();
+  if (image && image !== "none") return image;
+  return isTransparent(style.backgroundColor) ? fallback : style.backgroundColor;
+};
+
+const createGeneratedDocument = (generatedUI: GeneratedUI) => `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; min-width: ${HIDDEN_RENDER_WIDTH}px; }
+    img, svg { display: block; max-width: 100%; }
+    button, input, textarea, select { font: inherit; }
+    ${generatedUI.css}
+  </style>
+</head>
+<body>
+  ${generatedUI.html}
+</body>
+</html>`;
+
 const createEditableElementsFromLayout = async (generatedUI: GeneratedUI, prompt: string) => {
   if (typeof window === "undefined" || typeof document === "undefined") {
     return {
@@ -150,33 +185,28 @@ const createEditableElementsFromLayout = async (generatedUI: GeneratedUI, prompt
     };
   }
 
-  const host = document.createElement("div");
-  host.setAttribute("data-generated-ui-import", "true");
-  host.style.position = "fixed";
-  host.style.left = "-20000px";
-  host.style.top = "0";
-  host.style.width = `${HIDDEN_RENDER_WIDTH}px`;
-  host.style.pointerEvents = "none";
-  host.style.visibility = "hidden";
-  host.style.zIndex = "-1";
+  const iframe = document.createElement("iframe");
+  iframe.setAttribute("data-generated-ui-import", "true");
+  iframe.style.position = "fixed";
+  iframe.style.left = "-20000px";
+  iframe.style.top = "0";
+  iframe.style.width = `${HIDDEN_RENDER_WIDTH}px`;
+  iframe.style.height = `${HIDDEN_RENDER_HEIGHT}px`;
+  iframe.style.pointerEvents = "none";
+  iframe.style.visibility = "hidden";
+  iframe.style.zIndex = "-1";
+  iframe.srcdoc = createGeneratedDocument(generatedUI);
 
-  host.innerHTML = `
-    <style>
-      *, *::before, *::after { box-sizing: border-box; }
-      html, body { margin: 0; padding: 0; }
-      img { display: block; max-width: 100%; }
-      button, input, textarea, select { font: inherit; }
-      ${generatedUI.css}
-    </style>
-    <div data-generated-ui-root>
-      ${generatedUI.html}
-    </div>
-  `;
-
-  document.body.appendChild(host);
+  document.body.appendChild(iframe);
 
   try {
-    const root = host.querySelector("[data-generated-ui-root]") as HTMLElement | null;
+    await new Promise<void>((resolve) => {
+      iframe.addEventListener("load", () => resolve(), { once: true });
+      window.setTimeout(resolve, 1200);
+    });
+
+    const importDocument = iframe.contentDocument;
+    const root = importDocument?.body || null;
     if (!root) {
       return {
         elements: buildFallbackElements(prompt),
@@ -189,27 +219,33 @@ const createEditableElementsFromLayout = async (generatedUI: GeneratedUI, prompt
     await waitForImages(root);
     await waitForLayout();
 
+    const documentElement = importDocument?.documentElement || root;
     const rootRect = root.getBoundingClientRect();
-    const rootWidth = clamp(Math.ceil(Math.max(root.scrollWidth, rootRect.width, 360)), 360, 2200);
-    const rootHeight = clamp(Math.ceil(Math.max(root.scrollHeight, rootRect.height, 480)), 480, 4000);
+    const documentRect = documentElement.getBoundingClientRect();
+    const rootWidth = clamp(Math.ceil(Math.max(root.scrollWidth, documentElement.scrollWidth, rootRect.width, documentRect.width, HIDDEN_RENDER_WIDTH)), 360, 2400);
+    const rootHeight = clamp(Math.ceil(Math.max(root.scrollHeight, documentElement.scrollHeight, rootRect.height, documentRect.height, HIDDEN_RENDER_HEIGHT)), 480, 5000);
     const elements: CanvasElement[] = [];
     let nextId = 1;
 
-    const rootStyle = window.getComputedStyle(root);
-    if (hasVisibleBox(rootStyle)) {
-      elements.push({
-        ...createBaseElement(nextId++, "Frame", IMPORT_OFFSET_X, IMPORT_OFFSET_Y, rootWidth, rootHeight, prompt || "Generated UI"),
-        fillColor: isTransparent(rootStyle.backgroundColor) ? FRAME_FILL : rootStyle.backgroundColor,
-        strokeColor: hasVisibleBorder(rootStyle) ? rootStyle.borderTopColor : FRAME_STROKE,
-        strokeWidth: hasVisibleBorder(rootStyle) ? Number.parseFloat(rootStyle.borderTopWidth || "1") : 1,
-        cornerRadius: getRadius(rootStyle),
-      });
-    }
+    const rootStyle = iframe.contentWindow?.getComputedStyle(root) || window.getComputedStyle(root);
+    const previewFrameId = nextId++;
+    elements.push({
+      ...createBaseElement(previewFrameId, "Frame", IMPORT_OFFSET_X, IMPORT_OFFSET_Y, rootWidth, rootHeight, `${prompt || "Generated UI"} exact preview`),
+      fillColor: getBackgroundCss(rootStyle, FRAME_FILL),
+      strokeColor: FRAME_STROKE,
+      strokeWidth: 1,
+      cornerRadius: getRadius(rootStyle),
+      locked: true,
+      opacity: 100,
+      generatedPreview: true,
+      htmlContent: createGeneratedDocument(generatedUI),
+    });
 
     const nodes = Array.from(root.querySelectorAll("*")) as HTMLElement[];
+    const getComputedStyleForNode = (node: HTMLElement) => iframe.contentWindow?.getComputedStyle(node) || window.getComputedStyle(node);
 
     for (const node of nodes) {
-      const style = window.getComputedStyle(node);
+      const style = getComputedStyleForNode(node);
       const rect = node.getBoundingClientRect();
       const tag = node.tagName.toLowerCase();
 
@@ -222,6 +258,20 @@ const createEditableElementsFromLayout = async (generatedUI: GeneratedUI, prompt
       const h = clamp(rect.height, 4, 4000);
       const text = getTextValue(node);
 
+      if (tag === "svg") {
+        const svgMarkup = node.outerHTML;
+        const imageUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgMarkup)}`;
+        elements.push({
+          ...createBaseElement(nextId++, "Image", x, y, w, h, node.getAttribute("aria-label") || `${prompt} icon`),
+          fillColor: "transparent",
+          strokeColor: "transparent",
+          imageUrl,
+          imageObjectFit: "contain",
+          generatedEditable: true,
+        });
+        continue;
+      }
+
       if (tag === "img") {
         const src = node.getAttribute("src");
         if (!src) continue;
@@ -232,12 +282,13 @@ const createEditableElementsFromLayout = async (generatedUI: GeneratedUI, prompt
           imageUrl: src,
           imageObjectFit: style.objectFit || "cover",
           cornerRadius: getRadius(style),
+          generatedEditable: true,
         });
         continue;
       }
 
       if (["button", "input", "textarea", "select"].includes(tag)) {
-        const fillColor = isTransparent(style.backgroundColor) ? FRAME_FILL : style.backgroundColor;
+        const fillColor = getBackgroundCss(style, FRAME_FILL);
         const strokeColor = hasVisibleBorder(style) ? style.borderTopColor : FRAME_STROKE;
         const strokeWidth = hasVisibleBorder(style) ? Number.parseFloat(style.borderTopWidth || "1") : 1;
 
@@ -247,6 +298,7 @@ const createEditableElementsFromLayout = async (generatedUI: GeneratedUI, prompt
           strokeColor,
           strokeWidth,
           cornerRadius: getRadius(style),
+          generatedEditable: true,
         });
 
         if (text) {
@@ -260,6 +312,7 @@ const createEditableElementsFromLayout = async (generatedUI: GeneratedUI, prompt
             textAlign: style.textAlign || "left",
             lineHeight: Number.parseFloat(style.lineHeight || "0") || undefined,
             letterSpacing: Number.parseFloat(style.letterSpacing || "0") || undefined,
+            generatedEditable: true,
           });
         }
         continue;
@@ -268,10 +321,11 @@ const createEditableElementsFromLayout = async (generatedUI: GeneratedUI, prompt
       if (shouldCreateContainer(node, style)) {
         elements.push({
           ...createBaseElement(nextId++, "Frame", x, y, w, h, text?.slice(0, 60) || `${tag} block`),
-          fillColor: isTransparent(style.backgroundColor) ? "transparent" : style.backgroundColor,
+          fillColor: getBackgroundCss(style, "transparent"),
           strokeColor: hasVisibleBorder(style) ? style.borderTopColor : "transparent",
           strokeWidth: hasVisibleBorder(style) ? Number.parseFloat(style.borderTopWidth || "1") : 0,
           cornerRadius: getRadius(style),
+          generatedEditable: true,
         });
       }
 
@@ -286,6 +340,7 @@ const createEditableElementsFromLayout = async (generatedUI: GeneratedUI, prompt
           textAlign: style.textAlign || "left",
           lineHeight: Number.parseFloat(style.lineHeight || "0") || undefined,
           letterSpacing: Number.parseFloat(style.letterSpacing || "0") || undefined,
+          generatedEditable: true,
         });
       }
     }
@@ -296,7 +351,7 @@ const createEditableElementsFromLayout = async (generatedUI: GeneratedUI, prompt
       height: rootHeight,
     };
   } finally {
-    host.remove();
+    iframe.remove();
   }
 };
 
