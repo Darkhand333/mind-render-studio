@@ -48,6 +48,7 @@ const UIGeneratorPanel = () => {
   const promptBeforeListeningRef = useRef("");
   const finalTranscriptRef = useRef("");
   const promptRef = useRef("");
+  const toggleVoiceRef = useRef<() => void>(() => {});
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -259,12 +260,16 @@ const UIGeneratorPanel = () => {
         resetRecognitionState();
       }
     }
-  }, [buildRecognition, handleMicrophoneError, isListening, prompt, resetRecognitionState, stopListening, syncPromptWithTranscript, toast]);
+  }, [buildRecognition, handleMicrophoneError, isListening, resetRecognitionState, stopListening, syncPromptWithTranscript, toast]);
+
+  useEffect(() => {
+    toggleVoiceRef.current = toggleVoice;
+  }, [toggleVoice]);
 
   // Stop voice when unmount
   useEffect(() => {
     const startFromNavbarMic = () => {
-      if (!listeningRef.current) toggleVoice();
+      if (!listeningRef.current) toggleVoiceRef.current();
     };
 
     window.addEventListener("protocraft:generate-ui-voice", startFromNavbarMic);
@@ -275,7 +280,7 @@ const UIGeneratorPanel = () => {
       stopRequestedRef.current = true;
       try { recognitionRef.current?.abort(); } catch {}
     };
-  }, [clearRecognitionRestart, toggleVoice]);
+  }, [clearRecognitionRestart]);
 
   const handleGenerate = useCallback(async () => {
     const text = prompt.trim();
