@@ -112,9 +112,15 @@ const GlassNavbar = () => {
               <MessageSquare className="w-4 h-4" />
             </button>
             <button
-              onClick={() => setVoiceOpen(true)}
+              onClick={() => {
+                if (location.pathname === "/generate") {
+                  window.dispatchEvent(new CustomEvent("protocraft:generate-ui-voice"));
+                  return;
+                }
+                setVoiceOpen(true);
+              }}
               className="p-2 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-              title="Voice Commands"
+              title={location.pathname === "/generate" ? "Dictate Generate UI prompt" : "Voice Commands"}
             >
               <Mic className="w-4 h-4" />
             </button>
