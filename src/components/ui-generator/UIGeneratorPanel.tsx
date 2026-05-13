@@ -115,8 +115,9 @@ const UIGeneratorPanel = () => {
 
     if (recognitionRef.current) {
       try {
-        recognitionRef.current.abort();
+        recognitionRef.current.stop();
       } catch {
+        try { recognitionRef.current.abort(); } catch {}
         resetRecognitionState();
       }
     } else {
