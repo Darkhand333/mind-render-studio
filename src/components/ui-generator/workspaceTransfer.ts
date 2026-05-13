@@ -158,7 +158,7 @@ const getBackgroundCss = (style: CSSStyleDeclaration, fallback = "transparent") 
   return isTransparent(style.backgroundColor) ? fallback : style.backgroundColor;
 };
 
-const createGeneratedDocument = (generatedUI: GeneratedUI) => `<!DOCTYPE html>
+const createGeneratedDocument = (generatedUI: GeneratedUI, includeScripts = true) => `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -173,8 +173,17 @@ const createGeneratedDocument = (generatedUI: GeneratedUI) => `<!DOCTYPE html>
 </head>
 <body>
   ${generatedUI.html}
+  ${includeScripts && generatedUI.js ? `<script>${generatedUI.js}<\/script>` : ""}
 </body>
 </html>`;
+
+const isLayoutWrapper = (node: HTMLElement) => {
+  const tag = node.tagName.toLowerCase();
+  if (["html", "body", "script", "style", "meta", "link"].includes(tag)) return true;
+  if (node.children.length > 0) return true;
+  const text = getTextValue(node);
+  return !text;
+};
 
 const createEditableElementsFromLayout = async (generatedUI: GeneratedUI, prompt: string) => {
   if (typeof window === "undefined" || typeof document === "undefined") {
@@ -195,7 +204,7 @@ const createEditableElementsFromLayout = async (generatedUI: GeneratedUI, prompt
   iframe.style.pointerEvents = "none";
   iframe.style.visibility = "hidden";
   iframe.style.zIndex = "-1";
-  iframe.srcdoc = createGeneratedDocument(generatedUI);
+  iframe.srcdoc = createGeneratedDocument(generatedUI, false);
 
   document.body.appendChild(iframe);
 
@@ -329,7 +338,7 @@ const createEditableElementsFromLayout = async (generatedUI: GeneratedUI, prompt
         });
       }
 
-      if (shouldAddTextLayer(node) && text) {
+      if (shouldAddTextLayer(node) && text && !isLayoutWrapper(node)) {
         elements.push({
           ...createBaseElement(nextId++, "Text", x, y, w, h, text.slice(0, 80)),
           fillColor: isTransparent(style.color) ? "hsl(240, 10%, 12%)" : style.color,

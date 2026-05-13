@@ -23,6 +23,11 @@ const EXAMPLE_PROMPTS = [
   "Signup page with social login buttons",
 ];
 
+const getSpeechRecognitionConstructor = () => {
+  if (typeof window === "undefined") return null;
+  return (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition || null;
+};
+
 const UIGeneratorPanel = () => {
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -34,6 +39,7 @@ const UIGeneratorPanel = () => {
   const [copied, setCopied] = useState(false);
   const [history, setHistory] = useState<{ prompt: string; ui: GeneratedUI }[]>([]);
   const recognitionRef = useRef<any>(null);
+  const recognitionSessionRef = useRef(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const listeningRef = useRef(false);
@@ -41,8 +47,14 @@ const UIGeneratorPanel = () => {
   const restartTimeoutRef = useRef<number | null>(null);
   const promptBeforeListeningRef = useRef("");
   const finalTranscriptRef = useRef("");
+  const promptRef = useRef("");
+  const toggleVoiceRef = useRef<() => void>(() => {});
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    promptRef.current = prompt;
+  }, [prompt]);
 
   const syncPromptWithTranscript = useCallback((interim = "") => {
     const nextPrompt = [promptBeforeListeningRef.current, finalTranscriptRef.current, interim]
@@ -98,6 +110,7 @@ const UIGeneratorPanel = () => {
 
   const stopListening = useCallback(() => {
     stopRequestedRef.current = true;
+    recognitionSessionRef.current += 1;
     clearRecognitionRestart();
 
     if (recognitionRef.current) {
@@ -113,8 +126,10 @@ const UIGeneratorPanel = () => {
   }, [clearRecognitionRestart, resetRecognitionState]);
 
   const buildRecognition = useCallback(() => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SR = getSpeechRecognitionConstructor();
     if (!SR) return null;
+
+    const sessionId = recognitionSessionRef.current;
 
     const recognition = new SR();
     recognition.continuous = true;
@@ -129,6 +144,8 @@ const UIGeneratorPanel = () => {
     };
 
     recognition.onresult = (e: any) => {
+      if (sessionId !== recognitionSessionRef.current) return;
+
       let interim = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const transcriptChunk = e.results[i][0]?.transcript || "";
@@ -146,6 +163,7 @@ const UIGeneratorPanel = () => {
     };
 
     recognition.onerror = (e: any) => {
+      if (sessionId !== recognitionSessionRef.current) return;
       if (e.error === "no-speech" || e.error === "aborted") return;
 
       if (e.error === "network") {
@@ -159,16 +177,16 @@ const UIGeneratorPanel = () => {
     };
 
     recognition.onend = () => {
-      if (stopRequestedRef.current) {
+      if (sessionId !== recognitionSessionRef.current || stopRequestedRef.current) {
         resetRecognitionState();
         return;
       }
 
       clearRecognitionRestart();
       restartTimeoutRef.current = window.setTimeout(() => {
-        if (stopRequestedRef.current) return;
+        if (sessionId !== recognitionSessionRef.current || stopRequestedRef.current) return;
 
-        const nextRecognition = recognitionRef.current ?? buildRecognition();
+        const nextRecognition = buildRecognition();
         if (!nextRecognition) {
           resetRecognitionState();
           return;
@@ -196,13 +214,14 @@ const UIGeneratorPanel = () => {
       return;
     }
 
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SR = getSpeechRecognitionConstructor();
     if (!SR) {
       toast({ title: "Not supported", description: "Use Chrome, Edge, or Safari for voice input", variant: "destructive" });
       return;
     }
 
-    promptBeforeListeningRef.current = prompt.trim();
+    recognitionSessionRef.current += 1;
+    promptBeforeListeningRef.current = promptRef.current.trim();
     finalTranscriptRef.current = "";
     syncPromptWithTranscript("");
     stopRequestedRef.current = false;
@@ -242,12 +261,24 @@ const UIGeneratorPanel = () => {
         resetRecognitionState();
       }
     }
-  }, [buildRecognition, handleMicrophoneError, isListening, prompt, resetRecognitionState, stopListening, syncPromptWithTranscript, toast]);
+  }, [buildRecognition, handleMicrophoneError, isListening, resetRecognitionState, stopListening, syncPromptWithTranscript, toast]);
+
+  useEffect(() => {
+    toggleVoiceRef.current = toggleVoice;
+  }, [toggleVoice]);
 
   // Stop voice when unmount
   useEffect(() => {
+    const startFromNavbarMic = () => {
+      if (!listeningRef.current) toggleVoiceRef.current();
+    };
+
+    window.addEventListener("protocraft:generate-ui-voice", startFromNavbarMic);
     return () => {
+      window.removeEventListener("protocraft:generate-ui-voice", startFromNavbarMic);
       clearRecognitionRestart();
+      recognitionSessionRef.current += 1;
+      stopRequestedRef.current = true;
       try { recognitionRef.current?.abort(); } catch {}
     };
   }, [clearRecognitionRestart]);
