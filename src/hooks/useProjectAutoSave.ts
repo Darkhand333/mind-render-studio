@@ -52,6 +52,11 @@ export const useProjectAutoSave = (
 
     const initProject = async () => {
       const url = new URL(window.location.href);
+      if (url.searchParams.get("import") === "generated") {
+        loadedRef.current = true;
+        return;
+      }
+
       const pidFromUrl = url.searchParams.get("project");
       const pidFromStorage = window.localStorage.getItem(LAST_PROJECT_KEY);
       const pid = pidFromUrl || pidFromStorage;
