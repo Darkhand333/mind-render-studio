@@ -173,8 +173,17 @@ const createGeneratedDocument = (generatedUI: GeneratedUI) => `<!DOCTYPE html>
 </head>
 <body>
   ${generatedUI.html}
+  ${generatedUI.js ? `<script>${generatedUI.js}<\/script>` : ""}
 </body>
 </html>`;
+
+const isLayoutWrapper = (node: HTMLElement) => {
+  const tag = node.tagName.toLowerCase();
+  if (["html", "body", "script", "style", "meta", "link"].includes(tag)) return true;
+  if (node.children.length > 0) return true;
+  const text = getTextValue(node);
+  return !text;
+};
 
 const createEditableElementsFromLayout = async (generatedUI: GeneratedUI, prompt: string) => {
   if (typeof window === "undefined" || typeof document === "undefined") {
@@ -329,7 +338,7 @@ const createEditableElementsFromLayout = async (generatedUI: GeneratedUI, prompt
         });
       }
 
-      if (shouldAddTextLayer(node) && text) {
+      if (shouldAddTextLayer(node) && text && !isLayoutWrapper(node)) {
         elements.push({
           ...createBaseElement(nextId++, "Text", x, y, w, h, text.slice(0, 80)),
           fillColor: isTransparent(style.color) ? "hsl(240, 10%, 12%)" : style.color,
