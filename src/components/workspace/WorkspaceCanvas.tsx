@@ -199,19 +199,21 @@ const WorkspaceCanvas = () => {
     try {
       const data = JSON.parse(raw);
       const importedElements = Array.isArray(data.elements) ? data.elements : [];
+      if (importedElements.length === 0) return;
       const payload = {
         elements: importedElements,
         pages: data.pages || [{ id: 1, name: "Page 1", active: true }],
-        canvasSettings: data.canvasSettings || { zoom: 75, panOffset: { x: 40, y: 30 }, showGrid: true, gridSize: 40, gridStyle: "lines" },
+        canvasSettings: data.canvasSettings || { zoom: 75, panOffset: { x: 40, y: 30 }, showGrid: true, gridSize: 40, gridStyle: "lines", snapToGrid: false, showSmartGuides: true },
         name: data.name || data.prompt || "Generated UI",
       };
       applyWorkspaceData(payload);
       persistWorkspaceBackup(payload);
-      await createProject(payload.name, payload, "design");
+      void createProject(payload.name, payload, "design");
       localStorage.removeItem("protocraft:imported-ui");
       const url = new URL(window.location.href);
       url.searchParams.delete("import");
       url.searchParams.delete("source");
+      url.searchParams.delete("project");
       window.history.replaceState({}, "", url.toString());
       setLeftSidebarView("workspace");
     } catch {
@@ -1862,7 +1864,7 @@ const WorkspaceCanvas = () => {
                     height: ["Line", "Arrow", "Pen", "Pencil", "Brush"].includes(el.type) ? undefined : el.h,
                     transform: `rotate(${el.rotation}deg) scaleX(${el.flipH ? -1 : 1}) scaleY(${el.flipV ? -1 : 1})`,
                     transformOrigin: "center center",
-                    opacity: el.generatedEditable && !selectedElementIds.includes(el.id) ? 0.01 : el.opacity / 100,
+                    opacity: el.generatedEditable && !selectedElementIds.includes(el.id) ? 0.35 : el.opacity / 100,
                     mixBlendMode: (el.blendMode?.toLowerCase().replace(" ", "-") || "normal") as any,
                     filter: el.blurAmount ? `blur(${el.blurAmount}px)` : undefined,
                   }}
